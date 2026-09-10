@@ -16,10 +16,16 @@
     <!-- ===== Top Navigation ===== -->
     <nav class="navbar">
         <div class="nav-inner">
+        
+            <!-- LEFT: logo + "PAST PAPERS" -->
             <div class="nav-brand">
+                <div class="brand-logo">
+                    <img src="{{ url_for('static', filename='images/uni_logo.png') }}" alt="University Logo">
+                </div>
                 <span class="brand-line">Past Papers</span>
             </div>
-
+        
+            <!-- CENTER: name pill + icons on the same line -->
             <div class="nav-center">
                 <span class="nav-name">Syed Aun Muhammed</span>
                 <div class="nav-icons">
@@ -35,8 +41,11 @@
                     </a>
                     {% endif %}
                 </div>
-
+            </div>
+        
+            <!-- RIGHT: empty spacer to keep the grid balanced -->
             <div class="nav-spacer"></div>
+        
         </div>
     </nav>
 

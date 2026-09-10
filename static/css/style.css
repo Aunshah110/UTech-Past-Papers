@@ -101,16 +101,18 @@ img { max-width: 100%; display: block; }
 }
 
 /* --- Brand: logo placeholder + "Past Papers" --- */
+/* --- Brand: logo + "Past Papers" inline --- */
 .nav-brand {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.7rem;
 }
 
 .brand-logo {
     width: 42px;
     height: 42px;
+    flex-shrink: 0;
     border-radius: 50%;
     overflow: hidden;
     background: rgba(255, 255, 255, 0.6);
@@ -145,6 +147,7 @@ img { max-width: 100%; display: block; }
     color: var(--brown-600);
     position: relative;
     padding-bottom: 2px;
+    white-space: nowrap;
 }
 
 .brand-line::after {
@@ -157,24 +160,28 @@ img { max-width: 100%; display: block; }
 }
 
 /* --- Center: name pill + icon row --- */
+/* --- Center: name pill + icons on one line --- */
 .nav-center {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;        /* was column */
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
 }
 
 .nav-name {
-    display: inline-block;
-    font-size: 1.02rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.98rem;
     font-weight: 700;
     color: var(--brown-800);
     letter-spacing: 0.4px;
     white-space: nowrap;
-    padding: 0.32rem 1.05rem;
+    padding: 0.42rem 1.1rem;
     border-radius: 999px;
     border: 1.6px solid var(--brown-600);
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.55);
     backdrop-filter: blur(6px);
     box-shadow:
         0 2px 8px rgba(90, 54, 32, 0.08),
@@ -207,7 +214,7 @@ img { max-width: 100%; display: block; }
     box-shadow: 0 6px 14px rgba(90, 54, 32, 0.32);
 }
 
-.nav-spacer { /* grid balance */ }
+
 
 /* ============================================================
    HERO TITLES — cursor-tracked background highlight
@@ -293,16 +300,20 @@ img { max-width: 100%; display: block; }
     background: var(--glass-bg-strong);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--glass-border);
+    border: 1.6px solid rgba(90, 54, 32, 0.28);   /* visible outline */
     border-radius: 50px;
     padding: 0.55rem 1rem;
-    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+    box-shadow:
+        0 4px 18px rgba(90, 54, 32, 0.10),
+        inset 0 1px 0 var(--glass-highlight);
     transition: var(--t);
 }
 
 .search-wrap:focus-within {
-    box-shadow: 0 12px 34px rgba(90, 54, 32, 0.18), inset 0 1px 0 var(--glass-highlight);
     border-color: var(--brown-600);
+    box-shadow:
+        0 8px 26px rgba(90, 54, 32, 0.20),
+        inset 0 1px 0 var(--glass-highlight);
     transform: translateY(-1px);
 }
 
@@ -933,6 +944,30 @@ img { max-width: 100%; display: block; }
     .paper-download { justify-content: center; padding: 0.55rem 1rem; }
     .paper-year { font-size: 0.95rem; }
     .paper-type { font-size: 0.72rem; }
+}
+
+@media (max-width: 640px) {
+    .nav-inner {
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
+        justify-items: center;
+        padding: 0.75rem 1rem;
+    }
+    .nav-brand {
+        justify-content: center;
+    }
+    .nav-center {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    .nav-name {
+        font-size: 0.85rem;
+        padding: 0.3rem 0.85rem;
+    }
+    .brand-logo { width: 34px; height: 34px; }
+    .brand-line { font-size: 0.78rem; letter-spacing: 0.7px; }
+    .nav-icon { width: 30px; height: 30px; font-size: 0.85rem; }
 }
 
 /* --- Very small phones --- */
