@@ -1,5 +1,6 @@
 // ============================================================
 // Admin Dashboard JavaScript — grouped course list + auth + CSRF
+// Includes: first-time admin registration
 // ============================================================
 
 let csrfToken = '';
@@ -37,16 +38,29 @@ class AdminDashboard {
         this.isAuthenticated = false;
         this.user = null;
 
+        // Auth cards
+        this.loginCard      = document.getElementById('loginCard');
+        this.registerCard   = document.getElementById('registerCard');
+
+        // Forms
         this.loginForm      = document.getElementById('loginForm');
+        this.registerForm   = document.getElementById('registerForm');
         this.resetForm      = document.getElementById('resetForm');
         this.uploadForm     = document.getElementById('uploadForm');
+
+        // Status elements
+        this.loginStatus    = document.getElementById('loginStatus');
+        this.registerStatus = document.getElementById('registerStatus');
+        this.resetStatus    = document.getElementById('resetStatus');
+        this.uploadStatus   = document.getElementById('uploadStatus');
+
+        // Upload / list
         this.courseList     = document.getElementById('adminCoursesList');
         this.courseCount    = document.getElementById('courseCount');
-        this.uploadStatus   = document.getElementById('uploadStatus');
-        this.loginStatus    = document.getElementById('loginStatus');
-        this.resetStatus    = document.getElementById('resetStatus');
         this.fileInput      = document.getElementById('pdfFile');
         this.fileName       = document.getElementById('fileName');
+
+        // User display
         this.usernameDisplay = document.getElementById('usernameDisplay');
 
         this.init();
@@ -65,6 +79,14 @@ class AdminDashboard {
             this.loginForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.handleLogin();
+            });
+        }
+
+        // Register (first admin only)
+        if (this.registerForm) {
+            this.registerForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleRegister();
             });
         }
 
@@ -124,11 +146,42 @@ class AdminDashboard {
             } else {
                 this.isAuthenticated = false;
                 this.showLoginForm();
+                await this.decideLoginOrRegister();
             }
         } catch (err) {
             console.error('Auth check error:', err);
             this.isAuthenticated = false;
             this.showLoginForm();
+            await this.decideLoginOrRegister();
+        }
+    }
+
+    /**
+     * Ask the server whether any admin exists yet.
+     * - If none: show the register card (first-time setup).
+     * - If one exists: show only the login card.
+     * Falls back to login card on any error so the user is never stuck.
+     */
+    async decideLoginOrRegister() {
+        try {
+            const res = await fetch('/api/admin/exists', {
+                credentials: 'same-origin'
+            });
+            if (!res.ok) throw new Error('exists check failed');
+            const data = await res.json();
+
+            if (data.exists) {
+                if (this.loginCard)    this.loginCard.style.display    = 'block';
+                if (this.registerCard) this.registerCard.style.display = 'none';
+            } else {
+                if (this.loginCard)    this.loginCard.style.display    = 'none';
+                if (this.registerCard) this.registerCard.style.display = 'block';
+            }
+        } catch (err) {
+            console.error('admin/exists error:', err);
+            // Safe fallback: show login only
+            if (this.loginCard)    this.loginCard.style.display    = 'block';
+            if (this.registerCard) this.registerCard.style.display = 'none';
         }
     }
 
@@ -173,6 +226,85 @@ class AdminDashboard {
         }
     }
 
+    /**
+     * First-time admin registration.
+     * Only succeeds if zero admins exist on the server.
+     * On success: auto-login and swap to the dashboard.
+     * On 403 (an admin already exists): swap back to login.
+     */
+    async handleRegister() {
+        const username = document.getElementById('registerUsername').value.trim();
+        const email    = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+        const confirm  = document.getElementById('registerConfirm').value;
+
+        // Client-side mirrors of the server-side checks
+        if (!username || !email || !password || !confirm) {
+            return this.showRegisterStatus('All fields are required.', 'error');
+        }
+        if (username.length < 3) {
+            return this.showRegisterStatus('Username must be at least 3 characters.', 'error');
+        }
+        if (!email.includes('@') || !email.split('@')[1]?.includes('.')) {
+            return this.showRegisterStatus('Please enter a valid email address.', 'error');
+        }
+        if (password.length < 8) {
+            return this.showRegisterStatus('Password must be at least 8 characters.', 'error');
+        }
+        if (password !== confirm) {
+            return this.showRegisterStatus('Passwords do not match.', 'error');
+        }
+
+        this.showRegisterStatus('Creating admin account…', 'success');
+
+        try {
+            const res = await fetch('/api/admin/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    username,
+                    email,
+                    password,
+                    confirm_password: confirm
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.status === 403) {
+                // Race: someone registered in another tab first
+                this.showRegisterStatus(
+                    '⚠ ' + (data.error || 'An admin already exists.'),
+                    'error'
+                );
+                setTimeout(() => this.decideLoginOrRegister(), 2000);
+                return;
+            }
+
+            if (res.ok) {
+                this.showRegisterStatus('✅ Admin created! Redirecting…', 'success');
+                this.isAuthenticated = true;
+                this.user = data.user;
+                if (this.usernameDisplay && this.user) {
+                    this.usernameDisplay.textContent = this.user.username;
+                }
+                setTimeout(() => {
+                    this.showAdminContent();
+                    this.loadCourses();
+                }, 700);
+            } else {
+                this.showRegisterStatus(
+                    '❌ ' + (data.error || 'Registration failed.'),
+                    'error'
+                );
+            }
+        } catch (err) {
+            console.error('Register error:', err);
+            this.showRegisterStatus('❌ Network error. Please try again.', 'error');
+        }
+    }
+
     async handleLogout() {
         if (!confirm('Are you sure you want to logout?')) return;
 
@@ -184,6 +316,8 @@ class AdminDashboard {
                 csrfToken = '';
                 this.showLoginForm();
                 this.showLoginStatus('Logged out successfully.', 'success');
+                // Re-check whether register card should show
+                await this.decideLoginOrRegister();
             }
         } catch (err) {
             console.error('Logout error:', err);
@@ -436,6 +570,14 @@ class AdminDashboard {
         this.loginStatus.className = 'login-status';
         if (type) this.loginStatus.classList.add(type);
         this.loginStatus.style.display = 'block';
+    }
+
+    showRegisterStatus(message, type) {
+        if (!this.registerStatus) return;
+        this.registerStatus.textContent = message;
+        this.registerStatus.className = 'login-status';
+        if (type) this.registerStatus.classList.add(type);
+        this.registerStatus.style.display = 'block';
     }
 
     showStatus(message, type) {

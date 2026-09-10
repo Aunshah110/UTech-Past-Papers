@@ -146,6 +146,16 @@
         border: 1px solid rgba(40, 167, 69, 0.3);
     }
 
+    /* ---------- Register card extras ---------- */
+    .register-hint {
+        color: var(--brown-700);
+        font-size: 0.88rem;
+        line-height: 1.5;
+        margin: -0.6rem 0 1.2rem;
+        text-align: center;
+        opacity: 0.9;
+    }
+
     /* ============ MODAL ============ */
     .modal {
         display: none;
@@ -795,32 +805,72 @@
     <div class="page-bg"></div>
 
     <!-- ============ LOGIN OVERLAY ============ -->
-    <div id="loginOverlay" class="login-overlay">
-        <div class="login-container">
-            <div class="login-card">
-                <h2><i class="fas fa-lock"></i> Admin Login</h2>
-                <form id="loginForm" class="login-form">
-                    <div class="form-group">
-                        <label for="loginUsername">Username</label>
-                        <input type="text" id="loginUsername" placeholder="Enter username" required autocomplete="username">
-                    </div>
-                    <div class="form-group">
-                        <label for="loginPassword">Password</label>
-                        <input type="password" id="loginPassword" placeholder="Enter password" required autocomplete="current-password">
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-sign-in-alt"></i> Login
-                        </button>
-                    </div>
-                    <div class="login-links">
-                        <a href="#" onclick="showResetForm(); return false;">Forgot Password?</a>
-                    </div>
-                    <div id="loginStatus" class="login-status"></div>
-                </form>
+    <!-- ============ LOGIN OVERLAY ============ -->
+<div id="loginOverlay" class="login-overlay">
+    <div class="login-container">
+
+        <!-- ---------- LOGIN CARD ---------- -->
+        <div class="login-card" id="loginCard">
+            <h2><i class="fas fa-lock"></i> Admin Login</h2>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password" required autocomplete="current-password">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                </div>
+                <div class="login-links">
+                    <a href="#" onclick="showResetForm(); return false;">Forgot Password?</a>
+                </div>
+                <div id="loginStatus" class="login-status"></div>
+            </form>
+        </div>
+
+        <!-- ---------- REGISTER CARD (first-time only) ---------- -->
+        <div class="login-card" id="registerCard" style="display: none;">
+                    <h2><i class="fas fa-user-plus"></i> Create First Admin</h2>
+                    <p class="register-hint">
+                        No admin account exists yet. Create one now — this form will disappear forever once saved.
+                    </p>
+                    <form id="registerForm" class="login-form">
+                        <div class="form-group">
+                            <label for="registerUsername">Username</label>
+                            <input type="text" id="registerUsername" placeholder="Choose a username"
+                                   required minlength="3" maxlength="50" autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="registerEmail">Email</label>
+                            <input type="email" id="registerEmail" placeholder="admin@example.com"
+                                   required autocomplete="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="registerPassword">Password</label>
+                            <input type="password" id="registerPassword" placeholder="Min 8 characters"
+                                   required minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="registerConfirm">Confirm Password</label>
+                            <input type="password" id="registerConfirm" placeholder="Re-enter password"
+                                   required minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus"></i> Create Admin
+                            </button>
+                        </div>
+                        <div id="registerStatus" class="login-status"></div>
+                    </form>
+                </div>
+            
             </div>
         </div>
-    </div>
 
     <!-- ============ RESET PASSWORD MODAL ============ -->
     <div id="resetModal" class="modal" style="display: none;">

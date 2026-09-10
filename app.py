@@ -175,6 +175,124 @@ def upload_pdf_to_blob(pathname: str, file_bytes: bytes) -> str:
     # REST response includes the public URL
     return data.get("url") or data.get("downloadUrl")
 
+# ============================================================
+# ADMIN REGISTRATION (first admin only)
+# ============================================================
+
+@app.route('/api/admin/exists')
+def admin_exists():
+    """Return whether at least one admin account exists."""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM admin_users")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+
+        return jsonify({'exists': count > 0})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/register', methods=['POST'])
+def admin_register():
+    """
+    Register the FIRST admin only.
+    After one admin exists, this endpoint permanently returns 403.
+    """
+    conn = None
+    try:
+        # ---- 1. Parse input ----
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') or '').strip()
+        email    = (data.get('email')    or '').strip().lower()
+        password = data.get('password')  or ''
+        confirm  = data.get('confirm_password') or ''
+
+        # ---- 2. Validate ----
+        if not username or not email or not password:
+            return jsonify({'error': 'Username, email and password are required'}), 400
+
+        if len(username) < 3 or len(username) > 50:
+            return jsonify({'error': 'Username must be 3–50 characters'}), 400
+
+        # Basic email sanity
+        if '@' not in email or '.' not in email.split('@')[-1]:
+            return jsonify({'error': 'Please enter a valid email address'}), 400
+
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+        if password != confirm:
+            return jsonify({'error': 'Passwords do not match'}), 400
+
+        # ---- 3. Open DB, hard-block if an admin already exists ----
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        cur.execute("SELECT COUNT(*) AS c FROM admin_users")
+        if cur.fetchone()['c'] > 0:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': 'An admin account already exists. Registration is disabled.'
+            }), 403
+
+        # ---- 4. Insert new admin with hashed password ----
+        password_hash = hash_password(password)
+
+        try:
+            cur.execute("""
+                INSERT INTO admin_users (username, email, password_hash)
+                VALUES (%s, %s, %s)
+                RETURNING id, username, email
+            """, (username, email, password_hash))
+            row = cur.fetchone()
+            conn.commit()
+        except psycopg2.IntegrityError as ie:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            # Unique constraint on username or email
+            msg = 'Username or email already taken'
+            if 'username' in str(ie).lower():
+                msg = 'That username is already taken'
+            elif 'email' in str(ie).lower():
+                msg = 'That email is already registered'
+            return jsonify({'error': msg}), 409
+
+        # ---- 5. Auto-login the new admin ----
+        session['user_id'] = row['id']
+        session['username'] = row['username']
+        session.permanent = True
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            'message': 'Admin account created successfully',
+            'user': {
+                'id': row['id'],
+                'username': row['username'],
+                'email': row['email'],
+            }
+        }), 201
+
+    except Exception as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return jsonify({'error': str(e)}), 500
+
 
 def delete_pdf_from_blob(blob_url: str) -> None:
     """Delete a blob by its public URL."""
@@ -194,19 +312,16 @@ def delete_pdf_from_blob(blob_url: str) -> None:
 
 # ============= PASSWORD UTILITIES =============
 def hash_password(password):
-    """Hash a password using Werkzeug's PBKDF2-SHA256."""
     return generate_password_hash(password)
 
 def verify_password(password, hashed):
-    """Verify a password against its Werkzeug hash."""
     if not password or not hashed:
         return False
     try:
         return check_password_hash(hashed, password)
-    except Exception as e:
-        print(f"[verify_password] error: {e}")
+    except Exception:
         return False
-
+    
 def generate_reset_token():
     return secrets.token_urlsafe(32)
 
