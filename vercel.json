@@ -1,20 +1,9 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "app.py",
-      "use": "@vercel/python"
-    }
+    { "src": "app.py", "use": "@vercel/python" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "app.py"
-    }
-  ],
-  "env": {
-    "DATABASE_URL": "postgresql://UTECH-USER:hello110@host:5432/UTECH-Papers",
-    "BLOB_READ_WRITE_TOKEN": "",
-    "SECRET_KEY": "@secret_key"
-  }
+    { "src": "/(.*)", "dest": "app.py" }
+  ]
 }

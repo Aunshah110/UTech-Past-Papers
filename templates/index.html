@@ -3,87 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS Past Papers - Department of Computer Science</title>
-    
-    <!-- CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
-    
-    <!-- Font Awesome for icons -->
+    <title>UTech Papers — Department of Computer Science</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
 <body>
-    <!-- Navigation Bar -->
+
+    <!-- ===== Background ===== -->
+    <div class="page-bg"></div>
+
+    <!-- ===== Top Navigation ===== -->
     <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-left">
-                <span class="nav-brand">Syed Aun Muhammed</span>
+        <div class="nav-inner">
+            <div class="nav-brand">
+                <span class="brand-line">Past Papers</span>
             </div>
-            <div class="nav-right">
-                <a href="https://www.linkedin.com/in/syed-aun-muhammad-370487223" target="_blank" class="nav-link">
-                    <i class="fab fa-linkedin"></i>
-                </a>
-                <a href="https://github.com/Aunshah110" target="_blank" class="nav-link">
-                    <i class="fab fa-github"></i>
-                </a>
-                <a href="/" class="nav-link">
-                    <i class="fas fa-home"></i>
-                </a>
-            </div>
+
+            <div class="nav-center">
+                <span class="nav-name">Syed Aun Muhammed</span>
+                <div class="nav-icons">
+                    <a href="https://linkedin.com/in/syed-aun-muhammad-370487223" target="_blank" rel="noopener" class="nav-icon" aria-label="LinkedIn">
+                        <i class="fab fa-linkedin-in"></i>
+                    </a>
+                    <a href="https://github.com/Aunshah110" target="_blank" rel="noopener" class="nav-icon" aria-label="GitHub">
+                        <i class="fab fa-github"></i>
+                    </a>
+                    {% if request.endpoint != 'index' %}
+                    <a href="/" class="nav-icon" aria-label="Home">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    {% endif %}
+                </div>
+
+            <div class="nav-spacer"></div>
         </div>
     </nav>
 
-    <!-- Header Section -->
-    <header class="header">
-        <div class="header-content">
-            <h1 class="header-title">Department of Computer Science</h1>
-            <p class="header-subtitle">Access past papers, exams, and study resources</p>
-        </div>
+    <!-- ===== Hero Titles (cursor-tracked slide) ===== -->
+    <header class="hero-titles">
+        <h1 class="slide-title" data-text="UTech Papers">UTech Papers</h1>
+        <h2 class="slide-title sub" data-text="Department of Computer Science">Department of Computer Science</h2>
     </header>
 
-    <!-- Search Section -->
+    <!-- ===== Search ===== -->
     <section class="search-section">
         <div class="container">
-            <div class="search-container">
+            <div class="search-wrap">
                 <i class="fas fa-search search-icon"></i>
-                <input 
-                    type="text" 
-                    id="searchInput" 
-                    class="search-input" 
-                    placeholder="Search by course name or code..."
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="search-input"
+                    placeholder="Search by course name or code…"
                     autocomplete="off"
                 >
-                <button class="search-btn" id="clearSearchBtn">
+                <button id="clearSearchBtn" class="clear-btn" aria-label="Clear">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="search-stats" id="searchStats">
-                <span id="resultCount">Showing all courses</span>
-            </div>
+            <p class="search-stats" id="searchStats">Showing all courses</p>
         </div>
     </section>
 
-    <!-- Courses Grid -->
-    <section class="courses-section">
+    <!-- ===== Courses Grid ===== -->
+    <main class="courses-section">
         <div class="container">
-            <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+            <div id="loadingSpinner" class="loading" style="display:none;">
                 <i class="fas fa-spinner fa-spin"></i>
-                <span>Loading courses...</span>
+                <span>Loading courses…</span>
             </div>
-            <div id="coursesGrid" class="courses-grid">
-                <!-- Courses will be rendered here by JavaScript -->
-            </div>
-            <div id="noResults" class="no-results" style="display: none;">
+
+            <div id="coursesGrid" class="courses-grid"></div>
+
+            <div id="noResults" class="no-results" style="display:none;">
                 <i class="fas fa-search"></i>
                 <h3>No courses found</h3>
-                <p>Try adjusting your search terms</p>
+                <p>Try a different course name or code.</p>
             </div>
-            <div id="loadMoreContainer" class="load-more-container" style="display: none;">
-                <button id="loadMoreBtn" class="load-more-btn">Load More Courses</button>
+
+            <div id="loadMoreContainer" class="load-more-wrap" style="display:none;">
+                <button id="loadMoreBtn" class="load-more-btn">Load More</button>
             </div>
         </div>
-    </section>
+    </main>
 
-    <!-- JavaScript -->
-    <script src="/static/js/main.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

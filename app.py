@@ -12,8 +12,10 @@ import datetime
 from functools import wraps
 import urllib.parse
 
-# Load environment variables
-load_dotenv()
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
 CORS(app)
@@ -21,43 +23,32 @@ CORS(app)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get(
+    "FLASK_ENV", "development"
+) == "production"
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=24)
 
 # ============= SINGLE DATABASE CONNECTION FUNCTION =============
 def get_db_connection():
-    """
-    Universal database connection that works everywhere.
-    Tries SSL first (for Vercel), falls back to no SSL (for local).
-    """
-    database_url = os.environ.get('DATABASE_URL')
-    
+    database_url = os.environ.get("DATABASE_URL")
+
     if not database_url:
-        print("❌ DATABASE_URL not set in environment variables")
+        print("❌ DATABASE_URL is not configured.")
         return None
-    
+
     try:
-        # First attempt: Try with SSL (required for Vercel/Production)
-        conn = psycopg2.connect(database_url, sslmode='require')
-        print("✅ Connected to database with SSL")
+        conn = psycopg2.connect(
+            database_url,
+            connect_timeout=10
+        )
+
+        print("✅ PostgreSQL connection successful")
         return conn
-    except Exception as ssl_error:
-        # SSL failed - probably local development without SSL
-        print(f"⚠️ SSL connection failed: {ssl_error}")
-        
-        try:
-            # Second attempt: Try without SSL (for local development)
-            # Remove sslmode from URL if present
-            if 'sslmode=' in database_url:
-                database_url = database_url.split('?')[0]
-            
-            conn = psycopg2.connect(database_url)
-            print("✅ Connected to database without SSL (local mode)")
-            return conn
-        except Exception as no_ssl_error:
-            print(f"❌ All connection attempts failed: {no_ssl_error}")
-            return None
+
+    except psycopg2.Error as e:
+        print(f"❌ PostgreSQL connection failed: {e}")
+        return None
 
 # ============= DATABASE INITIALIZATION =============
 def init_db():
@@ -75,15 +66,26 @@ def init_db():
             CREATE TABLE IF NOT EXISTS courses (
                 id SERIAL PRIMARY KEY,
                 course_name VARCHAR(255) NOT NULL,
-                course_code VARCHAR(50) NOT NULL UNIQUE,
+                course_code VARCHAR(50)  NOT NULL,
                 description TEXT,
-                exam_type VARCHAR(20) NOT NULL CHECK (exam_type IN ('Mid', 'Final', 'Notes')),
+                exam_type VARCHAR(20) NOT NULL
+                    CHECK (exam_type IN ('Mid', 'Final', 'Notes')),
                 year INTEGER NOT NULL,
                 pdf_url VARCHAR(500) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT courses_code_type_year_unique
+                    UNIQUE (course_code, exam_type, year)
             )
         """)
-        
+
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_courses_course_code
+                ON courses(course_code);
+            CREATE INDEX IF NOT EXISTS idx_courses_name
+                ON courses(course_name);
+            CREATE INDEX IF NOT EXISTS idx_courses_exam_type
+                ON courses(exam_type);
+        """)
         # Create admin users table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admin_users (
@@ -127,6 +129,68 @@ def init_db():
     finally:
         conn.close()
 
+import requests  # add this import at the top
+
+# ===================== VERCEL BLOB HELPERS =====================
+
+BLOB_API_BASE = "https://blob.vercel-storage.com"
+
+def _blob_token():
+    """Read the Blob token from env at call time (never cache at import)."""
+    token = os.environ.get("BLOB_READ_WRITE_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "BLOB_READ_WRITE_TOKEN is not set. Add it in Vercel → Settings → "
+            "Environment Variables and redeploy."
+        )
+    return token
+
+
+def upload_pdf_to_blob(pathname: str, file_bytes: bytes) -> str:
+    """
+    Upload a PDF to Vercel Blob via the official REST API.
+    Returns the public URL of the uploaded blob.
+
+    Docs: https://vercel.com/docs/storage/vercel-blob/using-blob-sdk#api
+    """
+    token = _blob_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "x-api-version": "7",
+        "x-content-type": "application/pdf",
+        "x-add-random-suffix": "1",
+        "access": "public",
+    }
+    # Vercel Blob REST: PUT /<pathname> with raw body
+    url = f"{BLOB_API_BASE}/{pathname.lstrip('/')}"
+    resp = requests.put(url, headers=headers, data=file_bytes, timeout=60)
+
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Blob upload failed ({resp.status_code}): {resp.text[:300]}"
+        )
+
+    data = resp.json()
+    # REST response includes the public URL
+    return data.get("url") or data.get("downloadUrl")
+
+
+def delete_pdf_from_blob(blob_url: str) -> None:
+    """Delete a blob by its public URL."""
+    try:
+        token = _blob_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "x-api-version": "7",
+        }
+        # Extract pathname from the full URL
+        pathname = blob_url.split(f"{BLOB_API_BASE}/", 1)[-1]
+        url = f"{BLOB_API_BASE}/{pathname}"
+        requests.delete(url, headers=headers, timeout=30)
+    except Exception as e:
+        # Non-fatal — orphan blob will be cleaned up later if needed
+        print(f"Blob delete warning: {e}")
+
 # ============= PASSWORD UTILITIES =============
 def hash_password(password):
     salt = secrets.token_hex(16)
@@ -154,7 +218,7 @@ def login_required(f):
     return decorated_function
 
 # Initialize database on startup
-init_db()
+# init_db()
 
 # ============= AUTH ROUTES =============
 @app.route('/api/admin/login', methods=['POST'])
@@ -398,70 +462,174 @@ def search_courses():
 @app.route('/api/admin/upload', methods=['POST'])
 @login_required
 def upload_course():
+    """
+    Upload a paper. If the course code already exists, only the new paper
+    row is inserted (the card on the homepage automatically groups by code).
+    """
+    conn = None
     try:
-        course_name = request.form.get('course_name')
-        course_code = request.form.get('course_code')
-        description = request.form.get('description')
-        exam_type = request.form.get('exam_type')
-        year = request.form.get('year')
-        
-        if not all([course_name, course_code, exam_type, year]):
+        # ---------- 1. Read & validate form fields ----------
+        course_name  = (request.form.get('course_name')  or '').strip()
+        course_code  = (request.form.get('course_code')  or '').strip().upper()
+        description  = (request.form.get('description')  or '').strip()
+        exam_type    = (request.form.get('exam_type')    or '').strip()
+        year_raw     = (request.form.get('year')         or '').strip()
+
+        if not all([course_name, course_code, exam_type, year_raw]):
             return jsonify({'error': 'Missing required fields'}), 400
-        
-        if exam_type not in ['Mid', 'Final', 'Notes']:
+
+        if exam_type not in ('Mid', 'Final', 'Notes'):
             return jsonify({'error': 'Invalid exam type'}), 400
-        
+
+        try:
+            year = int(year_raw)
+        except ValueError:
+            return jsonify({'error': 'Year must be a number'}), 400
+
+        if year < 2000 or year > 2100:
+            return jsonify({'error': 'Year must be between 2000 and 2100'}), 400
+
+        # ---------- 2. Validate the uploaded file ----------
         if 'pdf_file' not in request.files:
             return jsonify({'error': 'No PDF file uploaded'}), 400
-        
+
         pdf_file = request.files['pdf_file']
-        if pdf_file.filename == '':
+        if not pdf_file.filename:
             return jsonify({'error': 'No file selected'}), 400
-        
+
         filename = secure_filename(pdf_file.filename)
-        if not filename.endswith('.pdf'):
+        if not filename.lower().endswith('.pdf'):
             return jsonify({'error': 'Only PDF files are allowed'}), 400
-        
-        try:
-            file_content = pdf_file.read()
-            blob_data = put(
-                f"courses/{course_code}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}",
-                file_content,
-                {'contentType': 'application/pdf'}
-            )
-            pdf_url = blob_data['url']
-        except Exception as e:
-            return jsonify({'error': f'Failed to upload PDF: {str(e)}'}), 500
-        
+
+        # ---------- 3. Open DB connection early (needed for the lookup) ----------
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
-        
-        try:
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO courses 
-                (course_name, course_code, description, exam_type, year, pdf_url)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (course_name, course_code, description, exam_type, year, pdf_url))
-            
-            course_id = cur.fetchone()[0]
-            conn.commit()
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        # ---------- 4. Does this course code already exist? ----------
+        cur.execute("""
+            SELECT id, course_name, description
+            FROM courses
+            WHERE UPPER(course_code) = %s
+            ORDER BY created_at ASC
+            LIMIT 1
+        """, (course_code,))
+        existing = cur.fetchone()
+
+        is_new_course = existing is None
+
+        if is_new_course:
+            # A brand new course — use what the admin typed
+            final_name        = course_name
+            final_description = description
+        else:
+            # Course already exists — keep its canonical name/description.
+            # If the admin typed a new description, adopt it (optional update).
+            final_name        = existing['course_name']
+            final_description = description or existing['description']
+
+        # ---------- 5. Prevent duplicate (code + type + year) ----------
+        cur.execute("""
+            SELECT id FROM courses
+            WHERE UPPER(course_code) = %s
+              AND exam_type = %s
+              AND year = %s
+        """, (course_code, exam_type, year))
+
+        if cur.fetchone():
             cur.close()
             conn.close()
-            
             return jsonify({
-                'message': 'Course uploaded successfully',
-                'course_id': course_id
-            }), 201
-        except psycopg2.IntegrityError:
+                'error': (
+                    f'{course_code} already has a {exam_type} paper '
+                    f'for {year}. Delete it first if you want to re-upload.'
+                )
+            }), 409
+
+        # ---------- 6. Upload PDF to Vercel Blob ----------
+        try:
+            file_content = pdf_file.read()
+            pathname = (
+                f"courses/{course_code}_"
+                f"{exam_type.lower()}_{year}_"
+                f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                f"{filename}"
+            )
+            pdf_url = upload_pdf_to_blob(pathname, file_content)
+        except Exception as e:
+            cur.close()
+            conn.close()
+            return jsonify({'error': f'Failed to upload PDF: {str(e)}'}), 500
+
+        # ---------- 7. Insert the paper row ----------
+        try:
+            cur.execute("""
+                INSERT INTO courses
+                    (course_name, course_code, description, exam_type, year, pdf_url)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                final_name,
+                course_code,
+                final_description,
+                exam_type,
+                year,
+                pdf_url,
+            ))
+            new_paper_id = cur.fetchone()['id']
+            conn.commit()
+        except psycopg2.IntegrityError as ie:
             conn.rollback()
-            return jsonify({'error': 'Course code already exists'}), 400
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': 'A matching paper already exists (code + type + year).'
+            }), 409
         except Exception as e:
             conn.rollback()
+            cur.close()
+            conn.close()
             return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+        # ---------- 8. Count total papers for this course ----------
+        cur.execute(
+            "SELECT COUNT(*) AS total FROM courses WHERE UPPER(course_code) = %s",
+            (course_code,)
+        )
+        total_papers = cur.fetchone()['total']
+
+        cur.close()
+        conn.close()
+
+        # ---------- 9. Friendly response ----------
+        if is_new_course:
+            message = (
+                f'New course {course_code} created with its first '
+                f'{exam_type} paper ({year}).'
+            )
+        else:
+            message = (
+                f'Added {exam_type} paper ({year}) to {course_code}. '
+                f'This course now has {total_papers} paper'
+                f'{"" if total_papers == 1 else "s"}.'
+            )
+
+        return jsonify({
+            'message': message,
+            'course_id': new_paper_id,
+            'course_code': course_code,
+            'is_new_course': is_new_course,
+            'total_papers': total_papers,
+        }), 201
+
     except Exception as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/course/<int:course_id>', methods=['DELETE'])
@@ -487,10 +655,7 @@ def delete_course(course_id):
         cur.close()
         
         if pdf_url:
-            try:
-                blob_delete(pdf_url)
-            except Exception as e:
-                print(f"Warning: Could not delete blob: {e}")
+            delete_pdf_from_blob(pdf_url)
         
         conn.close()
         return jsonify({'message': 'Course deleted successfully'})
@@ -500,18 +665,89 @@ def delete_course(course_id):
 @app.route('/api/admin/courses')
 @login_required
 def get_all_courses():
+    """
+    Admin course list — one entry per course code, with a breakdown
+    of papers grouped by exam type. This mirrors /api/courses/grouped
+    but is not paginated (admin wants to see everything).
+    """
     try:
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
-        
+
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM courses ORDER BY created_at DESC")
-        courses = [dict(row) for row in cur.fetchall()]
+
+        # One row per course_code with aggregate info
+        cur.execute("""
+            SELECT
+                MIN(id)                                        AS id,
+                course_name,
+                course_code,
+                MAX(year)                                      AS latest_year,
+                COUNT(*)                                       AS paper_count,
+                (ARRAY_AGG(description ORDER BY year DESC))[1] AS description,
+                MAX(created_at)                                AS last_uploaded,
+                -- Papers by type: comma-separated years per type
+                COALESCE(
+                    ARRAY_AGG(DISTINCT year ORDER BY year DESC)
+                        FILTER (WHERE exam_type = 'Mid'),
+                    '{}'
+                ) AS mid_years,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT year ORDER BY year DESC)
+                        FILTER (WHERE exam_type = 'Final'),
+                    '{}'
+                ) AS final_years,
+                COALESCE(
+                    ARRAY_AGG(DISTINCT year ORDER BY year DESC)
+                        FILTER (WHERE exam_type = 'Notes'),
+                    '{}'
+                ) AS notes_years
+            FROM courses
+            GROUP BY course_name, course_code
+            ORDER BY MAX(created_at) DESC
+        """)
+
+        rows = cur.fetchall()
+
+        # Also fetch every individual paper so the admin can view/delete each
+        cur.execute("""
+            SELECT id, course_code, exam_type, year, pdf_url
+            FROM courses
+            ORDER BY course_code, exam_type, year DESC
+        """)
+        all_papers = cur.fetchall()
+
         cur.close()
         conn.close()
-        
-        return jsonify({'courses': courses})
+
+        # Group papers by course_code for fast attachment
+        papers_by_code = {}
+        for p in all_papers:
+            papers_by_code.setdefault(p['course_code'], []).append({
+                'id':        p['id'],
+                'exam_type': p['exam_type'],
+                'year':      p['year'],
+                'pdf_url':   p['pdf_url'],
+            })
+
+        courses = []
+        for row in rows:
+            c = dict(row)
+            c['papers'] = papers_by_code.get(c['course_code'], [])
+            # Postgres returns integer[] — convert to plain list for JSON
+            c['mid_years']   = list(c.get('mid_years')   or [])
+            c['final_years'] = list(c.get('final_years') or [])
+            c['notes_years'] = list(c.get('notes_years') or [])
+            c.pop('last_uploaded', None)  # not needed in the payload
+            courses.append(c)
+
+        return jsonify({
+            'courses': courses,
+            'total_courses': len(courses),
+            'total_papers': sum(c['paper_count'] for c in courses),
+        })
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -523,6 +759,192 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/courses/grouped')
+def get_grouped_courses():
+    """Return one entry per course with paper count and latest year."""
+    try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        offset = (page - 1) * limit
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        # Total distinct courses
+        cur.execute("SELECT COUNT(DISTINCT course_code) FROM courses")
+        total_count = cur.fetchone()[0]
+
+        # Grouped courses with count + latest year + latest description
+        cur.execute("""
+            SELECT
+                MIN(id)                                   AS id,
+                course_name,
+                course_code,
+                MAX(year)                                 AS latest_year,
+                COUNT(*)                                  AS paper_count,
+                (ARRAY_AGG(description ORDER BY year DESC))[1] AS description,
+                (ARRAY_AGG(exam_type  ORDER BY year DESC))[1] AS latest_exam_type
+            FROM courses
+            GROUP BY course_name, course_code
+            ORDER BY MAX(created_at) DESC
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
+
+        courses = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            'courses': courses,
+            'total': total_count,
+            'page': page,
+            'limit': limit,
+            'total_pages': (total_count + limit - 1) // limit
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/courses/grouped/search')
+def search_grouped_courses():
+    """Search grouped courses by name or code."""
+    try:
+        query = request.args.get('q', '').strip()
+        if not query:
+            return jsonify({'courses': []})
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        pattern = f"%{query}%"
+
+        cur.execute("""
+            SELECT
+                MIN(id)                                   AS id,
+                course_name,
+                course_code,
+                MAX(year)                                 AS latest_year,
+                COUNT(*)                                  AS paper_count,
+                (ARRAY_AGG(description ORDER BY year DESC))[1] AS description,
+                (ARRAY_AGG(exam_type  ORDER BY year DESC))[1] AS latest_exam_type
+            FROM courses
+            WHERE LOWER(course_name) LIKE LOWER(%s)
+               OR LOWER(course_code) LIKE LOWER(%s)
+            GROUP BY course_name, course_code
+            ORDER BY
+                CASE
+                    WHEN LOWER(course_code) = LOWER(%s) THEN 1
+                    WHEN LOWER(course_name) = LOWER(%s) THEN 2
+                    ELSE 3
+                END,
+                MAX(created_at) DESC
+        """, (pattern, pattern, query, query))
+
+        courses = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+
+        return jsonify({'courses': courses})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/course/<int:course_id>')
+def get_course_detail(course_id):
+    """Get grouped details for one course."""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        # Get one row per distinct course_code — but we only have id, so find the
+        # course_code first via the row's id, then aggregate all matching rows.
+        cur.execute("SELECT course_code FROM courses WHERE id = %s", (course_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close(); conn.close()
+            return jsonify({'error': 'Course not found'}), 404
+
+        course_code = row['course_code']
+
+        cur.execute("""
+            SELECT
+                MIN(id)                                   AS id,
+                course_name,
+                course_code,
+                MAX(year)                                 AS latest_year,
+                COUNT(*)                                  AS paper_count,
+                (ARRAY_AGG(description ORDER BY year DESC))[1] AS description
+            FROM courses
+            WHERE course_code = %s
+            GROUP BY course_name, course_code
+        """, (course_code,))
+
+        course = cur.fetchone()
+        cur.close(); conn.close()
+
+        if not course:
+            return jsonify({'error': 'Course not found'}), 404
+
+        return jsonify(dict(course))
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/course/<int:course_id>/papers')
+def get_course_papers(course_id):
+    """Return all papers for a course, optionally filtered by exam_type."""
+    try:
+        exam_type = request.args.get('type', '').strip()  # Mid | Final | Notes | ''
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        cur.execute("SELECT course_code FROM courses WHERE id = %s", (course_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close(); conn.close()
+            return jsonify({'error': 'Course not found'}), 404
+
+        course_code = row['course_code']
+
+        if exam_type and exam_type in ('Mid', 'Final', 'Notes'):
+            cur.execute("""
+                SELECT id, course_name, course_code, exam_type, year, pdf_url, description
+                FROM courses
+                WHERE course_code = %s AND exam_type = %s
+                ORDER BY year DESC
+            """, (course_code, exam_type))
+        else:
+            cur.execute("""
+                SELECT id, course_name, course_code, exam_type, year, pdf_url, description
+                FROM courses
+                WHERE course_code = %s
+                ORDER BY year DESC
+            """, (course_code,))
+
+        papers = [dict(r) for r in cur.fetchall()]
+        cur.close(); conn.close()
+
+        return jsonify({'papers': papers, 'course_code': course_code})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+import secrets
+print(secrets.token_hex(32))
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

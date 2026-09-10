@@ -3,17 +3,798 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - CS Past Papers</title>
-    
-    <!-- CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/admin.css">
-    
-    <!-- Font Awesome -->
+    <title>Admin Dashboard — UTech Papers</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <style>
+    /* ============================================================
+       ADMIN PAGE — inherits theme tokens from style.css
+       ============================================================ */
+
+    /* ============ LOGIN OVERLAY ============ */
+    .login-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(59, 34, 12, 0.55);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        padding: 1.5rem;
+    }
+
+    .login-container {
+        width: 100%;
+        max-width: 420px;
+    }
+
+    .login-card {
+        background: var(--glass-bg-strong);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 2.4rem 2rem;
+        box-shadow:
+            var(--glass-shadow),
+            inset 0 1px 0 var(--glass-highlight);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .login-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(90,54,32,0.55), rgba(255,218,121,0.85), rgba(90,54,32,0.55));
+    }
+
+    .login-card h2 {
+        text-align: center;
+        margin-bottom: 1.6rem;
+        color: var(--brown-800);
+        font-weight: 700;
+        font-size: 1.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+    }
+
+    .login-card h2 i { color: var(--brown-600); }
+
+    .login-form .form-group {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .login-form .form-group label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: 600;
+        color: var(--brown-700);
+        font-size: 0.88rem;
+    }
+
+    .login-form .form-group input {
+        width: 100%;
+        padding: 0.7rem 1rem;
+        border: 2px solid rgba(90, 54, 32, 0.15);
+        border-radius: 10px;
+        font-size: 0.95rem;
+        transition: var(--t);
+        font-family: inherit;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--brown-900);
+    }
+
+    .login-form .form-group input:focus {
+        outline: none;
+        border-color: var(--brown-600);
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 0 3px rgba(112, 64, 35, 0.12);
+    }
+
+    .login-form .form-actions { margin-top: 1.5rem; }
+    .login-form .form-actions .btn { width: 100%; justify-content: center; }
+
+    .login-links {
+        text-align: center;
+        margin-top: 1.1rem;
+    }
+
+    .login-links a {
+        color: var(--brown-600);
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 600;
+        transition: var(--t);
+    }
+
+    .login-links a:hover {
+        color: var(--brown-800);
+        text-decoration: underline;
+    }
+
+    .login-status {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        display: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-align: center;
+    }
+
+    .login-status.error {
+        display: block;
+        background: rgba(220, 53, 69, 0.12);
+        color: #a02030;
+        border: 1px solid rgba(220, 53, 69, 0.3);
+    }
+
+    .login-status.success {
+        display: block;
+        background: rgba(40, 167, 69, 0.12);
+        color: #1e5c2e;
+        border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+
+    /* ============ MODAL ============ */
+    .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(59, 34, 12, 0.55);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+        padding: 1.5rem;
+    }
+
+    .modal-content {
+        background: var(--glass-bg-strong);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 2.2rem 2rem;
+        max-width: 420px;
+        width: 100%;
+        position: relative;
+        box-shadow:
+            var(--glass-shadow),
+            inset 0 1px 0 var(--glass-highlight);
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 0.85rem;
+        right: 1rem;
+        font-size: 1.6rem;
+        line-height: 1;
+        cursor: pointer;
+        color: var(--brown-700);
+        background: none;
+        border: none;
+        transition: var(--t);
+    }
+
+    .modal-close:hover { color: var(--brown-900); transform: rotate(90deg); }
+
+    .modal-content h2 {
+        margin-bottom: 1.5rem;
+        color: var(--brown-800);
+        font-size: 1.3rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .modal-content h2 i { color: var(--brown-600); }
+
+    .reset-form .form-group {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .reset-form .form-group label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: 600;
+        color: var(--brown-700);
+        font-size: 0.88rem;
+    }
+
+    .reset-form .form-group input {
+        width: 100%;
+        padding: 0.7rem 1rem;
+        border: 2px solid rgba(90, 54, 32, 0.15);
+        border-radius: 10px;
+        font-size: 0.95rem;
+        transition: var(--t);
+        font-family: inherit;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--brown-900);
+    }
+
+    .reset-form .form-group input:focus {
+        outline: none;
+        border-color: var(--brown-600);
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 0 3px rgba(112, 64, 35, 0.12);
+    }
+
+    .reset-form .form-actions {
+        display: flex;
+        gap: 0.8rem;
+        margin-top: 1.5rem;
+    }
+
+    .reset-form .form-actions .btn {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .reset-status {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        display: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-align: center;
+    }
+
+    .reset-status.error {
+        display: block;
+        background: rgba(220, 53, 69, 0.12);
+        color: #a02030;
+        border: 1px solid rgba(220, 53, 69, 0.3);
+    }
+
+    .reset-status.success {
+        display: block;
+        background: rgba(40, 167, 69, 0.12);
+        color: #1e5c2e;
+        border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+
+    /* ============ ADMIN NAVBAR (extends .navbar) ============ */
+    .admin-nav .nav-inner {
+        grid-template-columns: 1fr auto;
+        max-width: 1200px;
+        padding: 0.9rem 1.5rem;
+    }
+
+    .admin-nav .nav-brand {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .admin-nav .brand-line {
+        font-size: 1rem;
+        color: var(--brown-800);
+    }
+
+    .admin-nav .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        justify-content: flex-end;
+    }
+
+    .admin-user {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-weight: 600;
+        color: var(--brown-800);
+        font-size: 0.92rem;
+        padding: 0.35rem 0.9rem;
+        border-radius: 999px;
+        border: 1.4px solid rgba(90, 54, 32, 0.18);
+        background: rgba(255, 255, 255, 0.55);
+    }
+
+    .admin-user i { color: var(--brown-600); }
+
+    .logout-btn {
+        background: rgba(90, 54, 32, 0.08);
+        border: 1.4px solid transparent;
+        color: var(--brown-700);
+        padding: 0.45rem 0.9rem;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 0.86rem;
+        font-weight: 600;
+        font-family: inherit;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: var(--t);
+    }
+
+    .logout-btn:hover {
+        background: var(--btn-grad);
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(90, 54, 32, 0.28);
+    }
+
+    .admin-nav .nav-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: rgba(90, 54, 32, 0.08);
+        color: var(--brown-700);
+        text-decoration: none;
+        font-size: 0.95rem;
+        transition: var(--t);
+        border: 1px solid transparent;
+    }
+
+    .admin-nav .nav-link:hover {
+        background: var(--btn-grad);
+        color: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 14px rgba(90, 54, 32, 0.28);
+    }
+
+    /* ============ ADMIN LAYOUT ============ */
+    .admin-container {
+        position: relative;
+        z-index: 2;
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 0 1.5rem;
+    }
+
+    .admin-section { margin-bottom: 2rem; }
+
+    .admin-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 2rem;
+        box-shadow:
+            var(--glass-shadow),
+            inset 0 1px 0 var(--glass-highlight);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .admin-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(90,54,32,0.55), rgba(255,218,121,0.85), rgba(90,54,32,0.55));
+    }
+
+    .admin-card h2 {
+        margin-bottom: 1.5rem;
+        color: var(--brown-800);
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 1.25rem;
+    }
+
+    /* ============ ACCOUNT SETTINGS ============ */
+.account-hint {
+    color: var(--brown-700);
+    font-size: 0.9rem;
+    margin: -0.5rem 0 1.2rem;
+    opacity: 0.9;
+}
+
+.optional {
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: var(--brown-700);
+    opacity: 0.75;
+}
+
+    .admin-card h2 i { color: var(--brown-600); }
+
+    /* ============ UPLOAD FORM ============ */
+    .upload-form { max-width: 100%; }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.3rem;
+    }
+
+    .form-group { display: flex; flex-direction: column; }
+    .form-group.full-width { grid-column: 1 / -1; }
+
+    .form-group label {
+        font-weight: 600;
+        margin-bottom: 0.4rem;
+        color: var(--brown-700);
+        font-size: 0.88rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        padding: 0.7rem 1rem;
+        border: 2px solid rgba(90, 54, 32, 0.15);
+        border-radius: 10px;
+        font-size: 0.95rem;
+        transition: var(--t);
+        font-family: inherit;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--brown-900);
+        width: 100%;
+    }
+
+    .form-group textarea { resize: vertical; min-height: 90px; }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--brown-600);
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 0 3px rgba(112, 64, 35, 0.12);
+    }
+
+    .form-group input.error,
+    .form-group select.error { border-color: #dc3545; }
+
+    /* --- File upload --- */
+    .file-upload-wrapper { position: relative; }
+
+    .file-upload-wrapper input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .file-upload-info {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        padding: 1rem 1.1rem;
+        border: 2px dashed rgba(90, 54, 32, 0.28);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.45);
+        transition: var(--t);
+        color: var(--brown-700);
+    }
+
+    .file-upload-info i {
+        font-size: 1.4rem;
+        color: var(--brown-600);
+    }
+
+    .file-upload-info span {
+        color: var(--brown-700);
+        font-size: 0.92rem;
+        font-weight: 500;
+    }
+
+    .file-upload-wrapper:hover .file-upload-info {
+        border-color: var(--brown-600);
+        background: rgba(255, 255, 255, 0.7);
+    }
+
+    /* --- Form actions --- */
+    .form-actions {
+        display: flex;
+        gap: 0.8rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px dashed var(--glass-border-soft);
+        flex-wrap: wrap;
+    }
+
+    /* ============ BUTTONS (extends .btn) ============ */
+    .btn {
+        padding: 0.7rem 1.4rem;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--t);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.92rem;
+        font-family: inherit;
+        text-decoration: none;
+    }
+
+    .btn-primary {
+        background: var(--btn-grad);
+        color: #fff;
+        box-shadow: 0 6px 14px rgba(90, 54, 32, 0.28);
+    }
+
+    .btn-primary:hover {
+        background: var(--btn-grad-hov);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px rgba(90, 54, 32, 0.4);
+    }
+
+    .btn-secondary {
+        background: rgba(90, 54, 32, 0.08);
+        color: var(--brown-700);
+        border: 1.4px solid rgba(90, 54, 32, 0.18);
+    }
+
+    .btn-secondary:hover {
+        background: rgba(90, 54, 32, 0.15);
+        color: var(--brown-900);
+        transform: translateY(-2px);
+    }
+
+    .btn-danger {
+        background: linear-gradient(90deg, #8b1a1a, #a02030);
+        color: #fff;
+        box-shadow: 0 6px 14px rgba(139, 26, 26, 0.28);
+    }
+
+    .btn-danger:hover {
+        background: linear-gradient(90deg, #a02030, #8b1a1a);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px rgba(139, 26, 26, 0.4);
+    }
+
+    .btn-small {
+        padding: 0.45rem 0.8rem;
+        font-size: 0.82rem;
+        border-radius: 8px;
+    }
+
+    /* ============ STATUS MESSAGES ============ */
+    .upload-status {
+        margin-top: 1rem;
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        display: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .upload-status.success {
+        display: block;
+        background: rgba(40, 167, 69, 0.12);
+        color: #1e5c2e;
+        border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+
+    .upload-status.error {
+        display: block;
+        background: rgba(220, 53, 69, 0.12);
+        color: #a02030;
+        border: 1px solid rgba(220, 53, 69, 0.3);
+    }
+
+    .upload-status.info {
+        display: block;
+        background: rgba(90, 54, 32, 0.10);
+        color: var(--brown-800);
+        border: 1px solid rgba(90, 54, 32, 0.22);
+    }
+
+    /* ============ COURSE LIST ============ */
+    .list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.4rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .course-count {
+        background: rgba(90, 54, 32, 0.08);
+        padding: 0.35rem 1rem;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        color: var(--brown-700);
+        font-weight: 600;
+        border: 1px solid rgba(90, 54, 32, 0.15);
+    }
+
+    .admin-courses-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+
+    .admin-course-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.9rem 1rem;
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid var(--glass-border-soft);
+        border-radius: var(--radius-sm);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+        transition: var(--t);
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+
+    .admin-course-item:hover {
+        background: rgba(255, 255, 255, 0.72);
+        transform: translateX(3px);
+        box-shadow: 0 6px 16px rgba(59, 34, 12, 0.1);
+    }
+
+    .admin-course-info {
+        display: flex;
+        gap: 0.9rem;
+        align-items: center;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .admin-course-name {
+        font-weight: 700;
+        color: var(--brown-800);
+        font-size: 0.98rem;
+    }
+
+    .admin-course-code {
+        color: #fff;
+        font-size: 0.75rem;
+        background: var(--btn-grad);
+        padding: 0.22rem 0.7rem;
+        border-radius: 999px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+    }
+
+    .admin-course-type {
+        font-size: 0.72rem;
+        padding: 0.22rem 0.7rem;
+        border-radius: 999px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+    }
+
+    .admin-course-type.mid {
+        background: rgba(90, 54, 32, 0.12);
+        color: var(--brown-800);
+        border: 1px solid rgba(90, 54, 32, 0.22);
+    }
+
+    .admin-course-type.final {
+        background: rgba(255, 218, 121, 0.4);
+        color: var(--brown-800);
+        border: 1px solid rgba(255, 218, 121, 0.7);
+    }
+
+    .admin-course-type.notes {
+        background: rgba(112, 64, 35, 0.15);
+        color: var(--brown-800);
+        border: 1px solid rgba(112, 64, 35, 0.3);
+    }
+
+    .admin-course-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .admin-course-actions a {
+        color: var(--brown-600);
+        text-decoration: none;
+        font-size: 0.88rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.35rem 0.7rem;
+        border-radius: 8px;
+        transition: var(--t);
+    }
+
+    .admin-course-actions a:hover {
+        background: rgba(90, 54, 32, 0.08);
+        color: var(--brown-800);
+    }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 900px) {
+        .admin-nav .nav-inner { padding: 0.8rem 1.2rem; }
+        .admin-container { padding: 0 1.2rem; }
+        .admin-card { padding: 1.6rem; }
+    }
+
+    @media (max-width: 768px) {
+        .form-grid { grid-template-columns: 1fr; gap: 1rem; }
+    }
+
+    @media (max-width: 640px) {
+        .admin-nav .nav-inner {
+            grid-template-columns: 1fr;
+            gap: 0.6rem;
+            padding: 0.7rem 1rem;
+        }
+        .admin-nav .nav-brand {
+            justify-content: center;
+            flex-direction: row;
+        }
+        .admin-nav .nav-right {
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .admin-user { font-size: 0.82rem; padding: 0.28rem 0.7rem; }
+        .logout-btn { padding: 0.38rem 0.75rem; font-size: 0.78rem; }
+
+        .admin-container { padding: 0 1rem; margin: 1.2rem auto; }
+        .admin-card { padding: 1.3rem; }
+        .admin-card h2 { font-size: 1.1rem; }
+
+        .form-actions { flex-direction: column; }
+        .btn { justify-content: center; width: 100%; }
+
+        .login-card,
+        .modal-content { padding: 1.8rem 1.4rem; }
+
+        .reset-form .form-actions { flex-direction: column; }
+
+        .admin-course-item {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: left;
+        }
+        .admin-course-info { gap: 0.5rem; }
+        .admin-course-actions {
+            justify-content: flex-end;
+            padding-top: 0.5rem;
+            border-top: 1px dashed var(--glass-border-soft);
+        }
+    }
+
+    @media (max-width: 400px) {
+        .admin-card { padding: 1.1rem; }
+        .admin-card h2 { font-size: 1rem; }
+        .admin-user span { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+    </style>
 </head>
 <body>
-    <!-- Login Overlay -->
+
+    <!-- Background (matches homepage) -->
+    <div class="page-bg"></div>
+
+    <!-- ============ LOGIN OVERLAY ============ -->
     <div id="loginOverlay" class="login-overlay">
         <div class="login-container">
             <div class="login-card">
@@ -21,11 +802,11 @@
                 <form id="loginForm" class="login-form">
                     <div class="form-group">
                         <label for="loginUsername">Username</label>
-                        <input type="text" id="loginUsername" placeholder="Enter username" required>
+                        <input type="text" id="loginUsername" placeholder="Enter username" required autocomplete="username">
                     </div>
                     <div class="form-group">
                         <label for="loginPassword">Password</label>
-                        <input type="password" id="loginPassword" placeholder="Enter password" required>
+                        <input type="password" id="loginPassword" placeholder="Enter password" required autocomplete="current-password">
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
@@ -33,7 +814,7 @@
                         </button>
                     </div>
                     <div class="login-links">
-                        <a href="#" onclick="showResetForm()">Forgot Password?</a>
+                        <a href="#" onclick="showResetForm(); return false;">Forgot Password?</a>
                     </div>
                     <div id="loginStatus" class="login-status"></div>
                 </form>
@@ -41,7 +822,7 @@
         </div>
     </div>
 
-    <!-- Reset Password Modal -->
+    <!-- ============ RESET PASSWORD MODAL ============ -->
     <div id="resetModal" class="modal" style="display: none;">
         <div class="modal-content">
             <span class="modal-close" onclick="closeResetModal()">&times;</span>
@@ -49,7 +830,7 @@
             <form id="resetForm" class="reset-form">
                 <div class="form-group">
                     <label for="resetEmail">Email Address</label>
-                    <input type="email" id="resetEmail" placeholder="Enter your email" required>
+                    <input type="email" id="resetEmail" placeholder="Enter your email" required autocomplete="email">
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">
@@ -64,29 +845,34 @@
         </div>
     </div>
 
-    <!-- Main Admin Content -->
+    <!-- ============ MAIN ADMIN CONTENT ============ -->
     <div id="adminContent" style="display: none;">
-        <!-- Navigation Bar -->
+
+        <!-- Navbar (same structure as homepage navbar, admin variant) -->
         <nav class="navbar admin-nav">
-            <div class="nav-container">
-                <div class="nav-left">
-                    <span class="nav-brand">Admin Dashboard</span>
+            <div class="nav-inner">
+                <div class="nav-brand">
+                    <div class="brand-logo">
+                        <img src="{{ url_for('static', filename='images/uni_logo.png') }}" alt="University Logo">
+                    </div>
+                    <span class="brand-line">Admin Dashboard</span>
                 </div>
+
                 <div class="nav-right">
                     <span class="admin-user" id="adminUser">
-                        <i class="fas fa-user"></i> <span id="usernameDisplay">Admin</span>
+                        <i class="fas fa-user"></i>
+                        <span id="usernameDisplay">Admin</span>
                     </span>
-                    <button onclick="handleLogout()" class="nav-link logout-btn">
+                    <button onclick="handleLogout()" class="logout-btn" type="button">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
-                    <a href="/" class="nav-link">
-                        <i class="fas fa-home"></i>
-                    </a>
+                
                 </div>
             </div>
         </nav>
 
         <div class="admin-container">
+
             <!-- Upload Form -->
             <section class="admin-section upload-section">
                 <div class="admin-card">
@@ -142,6 +928,58 @@
                 </div>
             </section>
 
+
+            <!-- ============================================================
+                 ACCOUNT SETTINGS
+                 ============================================================ -->
+            <section class="admin-section account-section">
+                <div class="admin-card">
+                    <h2><i class="fas fa-user-shield"></i> Account Settings</h2>
+                    <p class="account-hint">
+                        Change your username or password. You must enter your current password to save changes.
+                    </p>
+                
+                    <form id="credentialsForm" class="upload-form" autocomplete="off">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="currentPassword">Current Password *</label>
+                                <input type="password" id="currentPassword" placeholder="Enter current password" required autocomplete="current-password">
+                            </div>
+                        
+                            <div class="form-group">
+                                <label for="newUsername">New Username <span class="optional">(leave blank to keep)</span></label>
+                                <input type="text" id="newUsername" placeholder="e.g., aun.admin" autocomplete="username" minlength="3" maxlength="50">
+                            </div>
+                        
+                            <div class="form-group">
+                                <label for="confirmNewUsername">Confirm New Username</label>
+                                <input type="text" id="confirmNewUsername" placeholder="Re-enter new username" autocomplete="off">
+                            </div>
+                        
+                            <div class="form-group">
+                                <label for="newPassword">New Password <span class="optional">(leave blank to keep)</span></label>
+                                <input type="password" id="newPassword" placeholder="Min 8 chars, 1 letter, 1 digit" autocomplete="new-password">
+                            </div>
+                        
+                            <div class="form-group">
+                                <label for="confirmNewPassword">Confirm New Password</label>
+                                <input type="password" id="confirmNewPassword" placeholder="Re-enter new password" autocomplete="new-password">
+                            </div>
+                        </div>
+                    
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Changes
+                            </button>
+                            <button type="reset" class="btn btn-secondary">
+                                <i class="fas fa-undo"></i> Reset
+                            </button>
+                        </div>
+                        <div id="credentialsStatus" class="upload-status"></div>
+                    </form>
+                </div>
+            </section>
+
             <!-- Course List -->
             <section class="admin-section list-section">
                 <div class="admin-card">
@@ -150,14 +988,13 @@
                         <span class="course-count" id="courseCount">0 courses</span>
                     </div>
                     <div id="adminCoursesList" class="admin-courses-list">
-                        <!-- Will be populated by JavaScript -->
+                        <!-- Populated by JS -->
                     </div>
                 </div>
             </section>
         </div>
     </div>
 
-    <!-- JavaScript -->
-    <script src="/static/js/admin.js"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

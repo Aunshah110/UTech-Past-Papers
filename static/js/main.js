@@ -1,212 +1,228 @@
-// Main JavaScript for Student Homepage
+// ============ Student Homepage Logic ============
 
+// ---------- Cursor-tracked slide for hero titles ----------
+function initSlideTitles() {
+    const titles = document.querySelectorAll('.slide-title');
+
+    titles.forEach((el) => {
+        // Track pointer position over the text; underline follows the cursor.
+        el.addEventListener('mousemove', (e) => {
+            const rect = el.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, x / rect.width));
+
+            // Slide width: minimum 12% of text, scaled to cursor position
+            const minWidth = 12;                     // %
+            const width = minWidth + (100 - minWidth) * pct;
+
+            el.style.setProperty('--slide-left', '0%');
+            el.style.setProperty('--slide-width', `${width}%`);
+            el.style.setProperty('--slide-opacity', '1');
+        });
+
+        el.addEventListener('mouseenter', () => {
+            el.style.setProperty('--slide-opacity', '1');
+        });
+
+        el.addEventListener('mouseleave', () => {
+            // Fade out and reset
+            el.style.setProperty('--slide-opacity', '0');
+            setTimeout(() => {
+                el.style.setProperty('--slide-width', '0%');
+            }, 220);
+        });
+    });
+}
+
+// ---------- Course Manager ----------
 class CourseManager {
     constructor() {
-        this.currentPage = 1;
+        this.page = 1;
         this.limit = 20;
         this.totalPages = 0;
         this.searchQuery = '';
         this.isSearching = false;
-        this.courses = [];
-        
-        this.coursesGrid = document.getElementById('coursesGrid');
-        this.searchInput = document.getElementById('searchInput');
-        this.clearBtn = document.getElementById('clearSearchBtn');
-        this.loadMoreBtn = document.getElementById('loadMoreBtn');
-        this.loadingSpinner = document.getElementById('loadingSpinner');
-        this.noResults = document.getElementById('noResults');
-        this.resultCount = document.getElementById('resultCount');
-        this.loadMoreContainer = document.getElementById('loadMoreContainer');
-        
+        this.allLoaded = [];
+
+        this.grid         = document.getElementById('coursesGrid');
+        this.searchInput  = document.getElementById('searchInput');
+        this.clearBtn     = document.getElementById('clearSearchBtn');
+        this.loadMoreBtn  = document.getElementById('loadMoreBtn');
+        this.loadMoreWrap = document.getElementById('loadMoreContainer');
+        this.spinner      = document.getElementById('loadingSpinner');
+        this.noResults    = document.getElementById('noResults');
+        this.stats        = document.getElementById('searchStats');
+
         this.init();
     }
-    
+
     init() {
-        this.loadCourses();
-        this.setupEventListeners();
+        this.loadCourses(true);
+        this.bindEvents();
     }
-    
-    setupEventListeners() {
-        // Search input with debounce
-        let debounceTimer;
+
+    bindEvents() {
+        let t;
         this.searchInput.addEventListener('input', (e) => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                this.handleSearch(e.target.value);
-            }, 300);
+            clearTimeout(t);
+            t = setTimeout(() => this.handleSearch(e.target.value), 280);
         });
-        
-        // Clear search
+
         this.clearBtn.addEventListener('click', () => {
             this.searchInput.value = '';
-            this.clearBtn.classList.remove('visible');
             this.handleSearch('');
         });
-        
-        // Load more
+
         this.loadMoreBtn.addEventListener('click', () => {
-            this.currentPage++;
+            this.page++;
             this.loadCourses(false);
         });
     }
-    
-    async loadCourses(reset = true) {
+
+    async loadCourses(reset) {
         if (reset) {
-            this.currentPage = 1;
-            this.courses = [];
-            this.coursesGrid.innerHTML = '';
-            this.loadMoreContainer.style.display = 'none';
+            this.page = 1;
+            this.allLoaded = [];
+            this.grid.innerHTML = '';
+            this.loadMoreWrap.style.display = 'none';
         }
-        
-        this.showLoading(true);
-        
+
+        this.setLoading(true);
+
         try {
-            const url = `/api/courses?page=${this.currentPage}&limit=${this.limit}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            this.totalPages = data.total_pages;
-            this.courses = [...this.courses, ...data.courses];
-            
-            this.renderCourses(this.courses);
-            this.updateLoadMoreButton();
-            this.updateStats(this.courses.length, data.total);
-            
-            // Hide loading spinner
-            this.showLoading(false);
-            
-        } catch (error) {
-            console.error('Error loading courses:', error);
-            this.showLoading(false);
-            this.showError('Failed to load courses. Please try again.');
+            const res = await fetch(`/api/courses/grouped?page=${this.page}&limit=${this.limit}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+            this.totalPages = data.total_pages || 1;
+            this.allLoaded = this.allLoaded.concat(data.courses);
+
+            this.render(this.allLoaded);
+            this.updateStats(this.allLoaded.length, data.total);
+            this.updateLoadMore();
+        } catch (err) {
+            console.error(err);
+            this.showError('Could not load courses. Please try again.');
+        } finally {
+            this.setLoading(false);
         }
     }
-    
-    async handleSearch(query) {
-        this.searchQuery = query.trim();
+
+    async handleSearch(rawQuery) {
+        this.searchQuery = rawQuery.trim();
         this.isSearching = this.searchQuery.length > 0;
-        
         this.clearBtn.classList.toggle('visible', this.isSearching);
-        
+
         if (!this.isSearching) {
             this.loadCourses(true);
             return;
         }
-        
-        this.showLoading(true);
-        
+
+        this.setLoading(true);
+        this.loadMoreWrap.style.display = 'none';
+
         try {
-            const url = `/api/search?q=${encodeURIComponent(this.searchQuery)}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            this.courses = data.courses;
-            this.renderCourses(this.courses);
-            
-            this.loadMoreContainer.style.display = 'none';
-            this.updateStats(this.courses.length);
-            this.showLoading(false);
-            
-        } catch (error) {
-            console.error('Search error:', error);
-            this.showLoading(false);
+            const res = await fetch(`/api/courses/grouped/search?q=${encodeURIComponent(this.searchQuery)}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Search failed');
+
+            this.render(data.courses);
+            this.updateStats(data.courses.length);
+        } catch (err) {
+            console.error(err);
             this.showError('Search failed. Please try again.');
+        } finally {
+            this.setLoading(false);
         }
     }
-    
-    renderCourses(courses) {
-        this.coursesGrid.innerHTML = '';
-        
-        if (courses.length === 0) {
+
+    render(courses) {
+        this.grid.innerHTML = '';
+        if (!courses.length) {
             this.noResults.style.display = 'block';
             return;
         }
-        
         this.noResults.style.display = 'none';
-        
-        courses.forEach((course, index) => {
-            const card = this.createCourseCard(course, index);
-            this.coursesGrid.appendChild(card);
+
+        courses.forEach((c, i) => {
+            this.grid.appendChild(this.buildCard(c, i));
         });
     }
-    
-    createCourseCard(course, index) {
-        const div = document.createElement('div');
-        div.className = 'course-card';
-        div.style.animationDelay = `${index * 50}ms`;
+
+    buildCard(course, index) {
+        const el = document.createElement('article');
+        el.className = 'course-card';
+        el.style.animationDelay = `${Math.min(index * 40, 400)}ms`;
         
-        const examTypeBadge = this.getExamTypeBadge(course.exam_type);
+        const name  = this.esc(course.course_name || 'Untitled Course');
+        const code  = this.esc(course.course_code || '—');
+        const desc  = this.esc(course.description || 'Study past papers, exams, and notes for this course.');
         
-        div.innerHTML = `
-            <div class="course-card-header">
-                <span class="course-card-code">${this.escapeHtml(course.course_code)}</span>
-                <span class="course-card-type">${examTypeBadge}</span>
+        // Robust number/year handling — works whether API returns int or string
+        const rawCount = course.paper_count;
+        const count = (rawCount === 0 || rawCount) ? Number(rawCount) : 0;
+        const year  = course.latest_year ? course.latest_year : '—';
+        
+        el.innerHTML = `
+            <div class="card-top">
+                <span class="card-code">${code}</span>
             </div>
-            <h3 class="course-card-title">${this.escapeHtml(course.course_name)}</h3>
-            <p class="course-card-description">${this.escapeHtml(course.description || 'No description available.')}</p>
-            <div class="course-card-footer">
-                <span class="course-card-year">📅 ${course.year}</span>
-                <a href="/course/${course.id}" class="course-card-btn">
-                    View Course →
+            <h3 class="card-title">${name}</h3>
+            <p class="card-desc">${desc}</p>
+        
+            <div class="card-meta">
+                <span class="meta-item" title="Total past papers">
+                    <i class="fas fa-file-pdf"></i>
+                    <span class="value">${count}</span>&nbsp;Paper${count === 1 ? '' : 's'}
+                </span>
+                <span class="meta-item" title="Latest year">
+                    <i class="fas fa-calendar-alt"></i>
+                    Latest:&nbsp;<span class="value">${year}</span>
+                </span>
+            </div>
+        
+            <div class="card-link-wrap">
+                <a href="/course/${course.id}" class="card-link">
+                    View Papers <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
         `;
-        
-        return div;
+        return el;
     }
-    
-    getExamTypeBadge(type) {
-        const badges = {
-            'Mid': '📝 Mid',
-            'Final': '📚 Final',
-            'Notes': '📓 Notes'
-        };
-        return badges[type] || type;
+
+    setLoading(on) {
+        this.spinner.style.display = on ? 'block' : 'none';
     }
-    
-    updateStats(displayed, total) {
+
+    updateStats(shown, total) {
         if (this.isSearching) {
-            this.resultCount.textContent = `Showing ${displayed} results for "${this.searchQuery}"`;
-        } else if (total) {
-            this.resultCount.textContent = `Showing ${displayed} of ${total} courses`;
+            this.stats.textContent = `Showing ${shown} result${shown === 1 ? '' : 's'} for "${this.searchQuery}"`;
+        } else if (total != null) {
+            this.stats.textContent = `Showing ${shown} of ${total} course${total === 1 ? '' : 's'}`;
         } else {
-            this.resultCount.textContent = `Showing ${displayed} courses`;
+            this.stats.textContent = `Showing ${shown} course${shown === 1 ? '' : 's'}`;
         }
     }
-    
-    updateLoadMoreButton() {
-        if (!this.isSearching && this.currentPage < this.totalPages) {
-            this.loadMoreContainer.style.display = 'block';
-        } else {
-            this.loadMoreContainer.style.display = 'none';
-        }
+
+    updateLoadMore() {
+        const more = !this.isSearching && this.page < this.totalPages;
+        this.loadMoreWrap.style.display = more ? 'block' : 'none';
     }
-    
-    showLoading(show) {
-        this.loadingSpinner.style.display = show ? 'block' : 'none';
+
+    showError(msg) {
+        this.noResults.style.display = 'block';
+        this.noResults.querySelector('h3').textContent = 'Something went wrong';
+        this.noResults.querySelector('p').textContent = msg;
     }
-    
-    showError(message) {
-        // Simple error handling - can be improved
-        alert(message);
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+
+    esc(str) {
+        const d = document.createElement('div');
+        d.textContent = String(str);
+        return d.innerHTML;
     }
 }
 
-// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
+    initSlideTitles();
     new CourseManager();
 });

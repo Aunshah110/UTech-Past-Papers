@@ -3,42 +3,217 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Course Details - CS Past Papers</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>UTech Papers</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
 <body>
+
+    <div class="page-bg"></div>
+
     <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-left">
-                <span class="nav-brand">Syed Aun Muhammed</span>
+        <div class="nav-inner">
+            <div class="nav-brand">
+                <span class="brand-line">Past Papers</span>
             </div>
-            <div class="nav-right">
-                <a href="https://linkedin.com/in/yourprofile" target="_blank" class="nav-link">
-                    <i class="fab fa-linkedin"></i>
-                </a>
-                <a href="https://github.com/yourprofile" target="_blank" class="nav-link">
-                    <i class="fab fa-github"></i>
-                </a>
-                <a href="/" class="nav-link">
-                    <i class="fas fa-home"></i>
-                </a>
+            <div class="nav-center">
+                <span class="nav-name">Syed Aun Muhammed</span>
+                <div class="nav-icons">
+                    <a href="https://linkedin.com/in/yourprofile" target="_blank" rel="noopener" class="nav-icon" aria-label="LinkedIn">
+                        <i class="fab fa-linkedin-in"></i>
+                    </a>
+                    <a href="https://github.com/yourprofile" target="_blank" rel="noopener" class="nav-icon" aria-label="GitHub">
+                        <i class="fab fa-github"></i>
+                    </a>
+                    {% if request.endpoint != 'index' %}
+                    <a href="/" class="nav-icon" aria-label="Home">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    {% endif %}
+                </div>
             </div>
+            <div class="nav-spacer"></div>
         </div>
     </nav>
 
-    <div class="container" style="padding: 2rem 0;">
-        <div class="admin-card" style="background: rgba(255,255,255,0.95); max-width: 800px; margin: 0 auto;">
-            <h2 style="color: var(--dark);"><i class="fas fa-book"></i> Course Details</h2>
-            <p style="color: var(--gray);">Course ID: {{ course_id }}</p>
-            <div style="margin: 2rem 0; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                <p style="color: var(--dark);">This page will display course past papers, notes, and resources.</p>
-                <p style="color: var(--gray); font-size: 0.9rem;">Coming soon: PDF access, year filtering, and resource browsing.</p>
+    <header class="hero-titles">
+        <h1 class="slide-title" data-text="Course Resources">Course Resources</h1>
+        <h2 class="slide-title sub" data-text="Past Papers & Notes">Past Papers &amp; Notes</h2>
+    </header>
+
+    <main class="courses-section">
+        <div class="container">
+            <div class="course-detail-card">
+                <div class="course-detail-header">
+                    <span class="card-code" id="courseCode">—</span>
+                    <a href="/" class="back-link">
+                        <i class="fas fa-arrow-left"></i> Back to Courses
+                    </a>
+                </div>
+
+                <h2 class="course-detail-title" id="courseName">Loading…</h2>
+                <p class="course-detail-desc" id="courseDescription">Please wait…</p>
+
+                <div class="course-detail-meta">
+                    <span class="meta-item">
+                        <i class="fas fa-file-pdf"></i>
+                        <span class="value" id="paperCount">0</span>&nbsp;Papers
+                    </span>
+                    <span class="meta-item">
+                        <i class="fas fa-calendar-alt"></i>
+                        Latest: <span class="value" id="latestYear">—</span>
+                    </span>
+                </div>
+
+                <div class="tabs" role="tablist">
+                    <button class="tab-btn" data-type="Mid"   role="tab">Mid</button>
+                    <button class="tab-btn" data-type="Final" role="tab">Final</button>
+                    <button class="tab-btn" data-type="Notes" role="tab">Notes</button>
+                </div>
+
+                <div id="papersList" class="papers-list">
+                    <div class="papers-empty">
+                        <i class="fas fa-hand-pointer"></i>
+                        <p>Select a category above to view papers.</p>
+                    </div>
+                </div>
             </div>
-            <a href="/" class="btn btn-primary" style="display: inline-flex; margin-top: 1rem;">
-                <i class="fas fa-arrow-left"></i> Back to Courses
-            </a>
         </div>
-    </div>
+    </main>
+
+    <script>
+    (function () {
+        "use strict";
+
+        // ---- Course ID (Jinja → valid JS number or null) ----
+        const courseId = {{ course_id | tojson }};
+
+        // Guard: bail out gracefully if the ID is missing
+        if (courseId === null || courseId === undefined || courseId === "") {
+            document.getElementById('courseName').textContent = 'Invalid course';
+            document.getElementById('courseDescription').textContent =
+                'No course ID was provided in the URL.';
+            document.querySelector('.tabs').style.display = 'none';
+            document.getElementById('papersList').style.display = 'none';
+            return;
+        }
+
+        const safeId = encodeURIComponent(courseId);
+
+        // ---- DOM refs ----
+        const elCode   = document.getElementById('courseCode');
+        const elName   = document.getElementById('courseName');
+        const elDesc   = document.getElementById('courseDescription');
+        const elCount  = document.getElementById('paperCount');
+        const elYear   = document.getElementById('latestYear');
+        const elPapers = document.getElementById('papersList');
+        const tabBtns  = document.querySelectorAll('.tab-btn');
+
+        // ---- Load course header ----
+        fetch(`/api/course/${safeId}`)
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (c) {
+                if (!c || c.error) {
+                    elName.textContent = 'Course not found';
+                    elDesc.textContent = '';
+                    return;
+                }
+                elCode.textContent  = c.course_code || '—';
+                elName.textContent  = c.course_name || 'Untitled';
+                elDesc.textContent  = c.description ||
+                    'Study past papers, exams, and notes for this course.';
+                elCount.textContent = c.paper_count || 0;
+                elYear.textContent  = c.latest_year || '—';
+            })
+            .catch(function (err) {
+                console.error('Course load error:', err);
+                elName.textContent = 'Error loading course';
+                elDesc.textContent = 'Please refresh the page or try again later.';
+            });
+
+        // ---- Tabs ----
+        tabBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                tabBtns.forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                loadPapers(btn.dataset.type);
+            });
+        });
+
+        function loadPapers(type) {
+            elPapers.innerHTML =
+                '<div class="papers-loading">' +
+                    '<i class="fas fa-spinner fa-spin"></i>' +
+                    '<p>Loading ' + escapeHtml(type) + ' papers…</p>' +
+                '</div>';
+
+            fetch('/api/course/' + safeId + '/papers?type=' + encodeURIComponent(type))
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function (data) {
+                    const papers = (data && data.papers) || [];
+
+                    if (!papers.length) {
+                        elPapers.innerHTML =
+                            '<div class="papers-empty">' +
+                                '<i class="fas fa-inbox"></i>' +
+                                '<p>No ' + escapeHtml(type) + ' papers available yet.</p>' +
+                            '</div>';
+                        return;
+                    }
+
+                    let html = '';
+                    papers.forEach(function (p) {
+                        html +=
+                            '<div class="paper-row">' +
+                                '<div class="paper-info">' +
+                                    '<div class="paper-icon"><i class="fas fa-file-pdf"></i></div>' +
+                                    '<div class="paper-text">' +
+                                        '<span class="paper-year">' + escapeHtml(p.year) + '</span>' +
+                                        '<span class="paper-type">' + escapeHtml(p.exam_type) + '</span>' +
+                                    '</div>' +
+                                '</div>' +
+                                '<a class="paper-download" href="' + escapeAttr(p.pdf_url) +
+                                    '" download target="_blank" rel="noopener">' +
+                                    '<i class="fas fa-download"></i> Download' +
+                                '</a>' +
+                            '</div>';
+                    });
+                    elPapers.innerHTML = html;
+                })
+                .catch(function (err) {
+                    console.error('Papers load error:', err);
+                    elPapers.innerHTML =
+                        '<div class="papers-empty">' +
+                            '<i class="fas fa-exclamation-triangle"></i>' +
+                            '<p>Failed to load papers. Please try again.</p>' +
+                        '</div>';
+                });
+        }
+
+        // ---- Small HTML escape helpers ----
+        function escapeHtml(value) {
+            const d = document.createElement('div');
+            d.textContent = value == null ? '' : String(value);
+            return d.innerHTML;
+        }
+
+        function escapeAttr(value) {
+            // For href we only need to neutralize quotes and angle brackets
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+    })();
+    </script>
 </body>
 </html>
