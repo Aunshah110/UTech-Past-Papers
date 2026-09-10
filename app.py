@@ -668,13 +668,17 @@ def upload_course():
         # ---------- 6. Upload PDF to Vercel Blob ----------
         try:
             file_content = pdf_file.read()
-            pathname = (
-                f"courses/{course_code}_"
+            safe_original = secure_filename(pdf_file.filename) or "paper.pdf"
+
+            # No timestamp — URL ends with the exact original name.
+            # Uniqueness comes from the DB (course_code + exam_type + year).
+            blob_pathname = (
+                f"courses/{course_code}/"
                 f"{exam_type.lower()}_{year}_"
-                f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_"
-                f"{filename}"
+                f"{safe_original}"
             )
-            pdf_url = upload_pdf_to_blob(pathname, file_content)
+
+            pdf_url = upload_pdf_to_blob(blob_pathname, file_content)
         except Exception as e:
             cur.close()
             conn.close()
