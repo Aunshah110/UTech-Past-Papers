@@ -1,0 +1,6 @@
+Flask==2.3.3
+psycopg2-binary==2.9.7
+python-dotenv==1.0.0
+vercel-blob==0.1.0
+flask-cors==4.0.0
+Werkzeug==2.3.7

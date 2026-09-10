@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS Past Papers - Department of Computer Science</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-left">
+                <span class="nav-brand">Syed Aun Muhammed</span>
+            </div>
+            <div class="nav-right">
+                <a href="https://www.linkedin.com/in/syed-aun-muhammad-370487223" target="_blank" class="nav-link">
+                    <i class="fab fa-linkedin"></i>
+                </a>
+                <a href="https://github.com/Aunshah110" target="_blank" class="nav-link">
+                    <i class="fab fa-github"></i>
+                </a>
+                <a href="/" class="nav-link">
+                    <i class="fas fa-home"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header Section -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">Department of Computer Science</h1>
+            <p class="header-subtitle">Access past papers, exams, and study resources</p>
+        </div>
+    </header>
+
+    <!-- Search Section -->
+    <section class="search-section">
+        <div class="container">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    class="search-input" 
+                    placeholder="Search by course name or code..."
+                    autocomplete="off"
+                >
+                <button class="search-btn" id="clearSearchBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="search-stats" id="searchStats">
+                <span id="resultCount">Showing all courses</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Courses Grid -->
+    <section class="courses-section">
+        <div class="container">
+            <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>Loading courses...</span>
+            </div>
+            <div id="coursesGrid" class="courses-grid">
+                <!-- Courses will be rendered here by JavaScript -->
+            </div>
+            <div id="noResults" class="no-results" style="display: none;">
+                <i class="fas fa-search"></i>
+                <h3>No courses found</h3>
+                <p>Try adjusting your search terms</p>
+            </div>
+            <div id="loadMoreContainer" class="load-more-container" style="display: none;">
+                <button id="loadMoreBtn" class="load-more-btn">Load More Courses</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- JavaScript -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

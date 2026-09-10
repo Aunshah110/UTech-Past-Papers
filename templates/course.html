@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Details - CS Past Papers</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-left">
+                <span class="nav-brand">Syed Aun Muhammed</span>
+            </div>
+            <div class="nav-right">
+                <a href="https://linkedin.com/in/yourprofile" target="_blank" class="nav-link">
+                    <i class="fab fa-linkedin"></i>
+                </a>
+                <a href="https://github.com/yourprofile" target="_blank" class="nav-link">
+                    <i class="fab fa-github"></i>
+                </a>
+                <a href="/" class="nav-link">
+                    <i class="fas fa-home"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container" style="padding: 2rem 0;">
+        <div class="admin-card" style="background: rgba(255,255,255,0.95); max-width: 800px; margin: 0 auto;">
+            <h2 style="color: var(--dark);"><i class="fas fa-book"></i> Course Details</h2>
+            <p style="color: var(--gray);">Course ID: {{ course_id }}</p>
+            <div style="margin: 2rem 0; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                <p style="color: var(--dark);">This page will display course past papers, notes, and resources.</p>
+                <p style="color: var(--gray); font-size: 0.9rem;">Coming soon: PDF access, year filtering, and resource browsing.</p>
+            </div>
+            <a href="/" class="btn btn-primary" style="display: inline-flex; margin-top: 1rem;">
+                <i class="fas fa-arrow-left"></i> Back to Courses
+            </a>
+        </div>
+    </div>
+</body>
+</html>

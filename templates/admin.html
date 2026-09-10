@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - CS Past Papers</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/admin.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-container">
+            <div class="login-card">
+                <h2><i class="fas fa-lock"></i> Admin Login</h2>
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="loginUsername">Username</label>
+                        <input type="text" id="loginUsername" placeholder="Enter username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" placeholder="Enter password" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                    </div>
+                    <div class="login-links">
+                        <a href="#" onclick="showResetForm()">Forgot Password?</a>
+                    </div>
+                    <div id="loginStatus" class="login-status"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div id="resetModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeResetModal()">&times;</span>
+            <h2><i class="fas fa-key"></i> Reset Password</h2>
+            <form id="resetForm" class="reset-form">
+                <div class="form-group">
+                    <label for="resetEmail">Email Address</label>
+                    <input type="email" id="resetEmail" placeholder="Enter your email" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Send Reset Link
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeResetModal()">
+                        Cancel
+                    </button>
+                </div>
+                <div id="resetStatus" class="reset-status"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Admin Content -->
+    <div id="adminContent" style="display: none;">
+        <!-- Navigation Bar -->
+        <nav class="navbar admin-nav">
+            <div class="nav-container">
+                <div class="nav-left">
+                    <span class="nav-brand">Admin Dashboard</span>
+                </div>
+                <div class="nav-right">
+                    <span class="admin-user" id="adminUser">
+                        <i class="fas fa-user"></i> <span id="usernameDisplay">Admin</span>
+                    </span>
+                    <button onclick="handleLogout()" class="nav-link logout-btn">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                    <a href="/" class="nav-link">
+                        <i class="fas fa-home"></i>
+                    </a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="admin-container">
+            <!-- Upload Form -->
+            <section class="admin-section upload-section">
+                <div class="admin-card">
+                    <h2><i class="fas fa-upload"></i> Upload New Course</h2>
+                    <form id="uploadForm" class="upload-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="courseCode">Course Code *</label>
+                                <input type="text" id="courseCode" placeholder="e.g., CS-301" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="courseName">Course Name *</label>
+                                <input type="text" id="courseName" placeholder="e.g., Data Structures" required>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="description">Description</label>
+                                <textarea id="description" rows="3" placeholder="Brief course description..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="examType">Exam Type *</label>
+                                <select id="examType" required>
+                                    <option value="">Select Type</option>
+                                    <option value="Mid">Mid</option>
+                                    <option value="Final">Final</option>
+                                    <option value="Notes">Notes</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="year">Year *</label>
+                                <input type="number" id="year" placeholder="e.g., 2023" min="2000" max="2030" required>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="pdfFile">PDF File *</label>
+                                <div class="file-upload-wrapper">
+                                    <input type="file" id="pdfFile" accept=".pdf" required>
+                                    <div class="file-upload-info">
+                                        <i class="fas fa-file-pdf"></i>
+                                        <span id="fileName">No file selected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-cloud-upload-alt"></i> Upload Course
+                            </button>
+                            <button type="reset" class="btn btn-secondary">
+                                <i class="fas fa-undo"></i> Reset
+                            </button>
+                        </div>
+                        <div id="uploadStatus" class="upload-status"></div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Course List -->
+            <section class="admin-section list-section">
+                <div class="admin-card">
+                    <div class="list-header">
+                        <h2><i class="fas fa-list"></i> All Courses</h2>
+                        <span class="course-count" id="courseCount">0 courses</span>
+                    </div>
+                    <div id="adminCoursesList" class="admin-courses-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>
