@@ -14,7 +14,7 @@
   ],
   "env": {
     "DATABASE_URL": "postgresql://UTECH-USER:hello110@host:5432/UTECH-Papers",
-    "BLOB_READ_WRITE_TOKEN": "@blob_read_write_token",
+    "BLOB_READ_WRITE_TOKEN": "",
     "SECRET_KEY": "@secret_key"
   }
 }
