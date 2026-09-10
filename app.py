@@ -8,6 +8,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
 import urllib.parse
@@ -193,16 +194,17 @@ def delete_pdf_from_blob(blob_url: str) -> None:
 
 # ============= PASSWORD UTILITIES =============
 def hash_password(password):
-    salt = secrets.token_hex(16)
-    hash_obj = hashlib.sha256((salt + password).encode())
-    return f"{salt}${hash_obj.hexdigest()}"
+    """Hash a password using Werkzeug's PBKDF2-SHA256."""
+    return generate_password_hash(password)
 
 def verify_password(password, hashed):
+    """Verify a password against its Werkzeug hash."""
+    if not password or not hashed:
+        return False
     try:
-        salt, hash_value = hashed.split('$')
-        hash_obj = hashlib.sha256((salt + password).encode())
-        return hash_obj.hexdigest() == hash_value
-    except:
+        return check_password_hash(hashed, password)
+    except Exception as e:
+        print(f"[verify_password] error: {e}")
         return False
 
 def generate_reset_token():
