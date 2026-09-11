@@ -9,6 +9,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from requests import requests
 import datetime
 from functools import wraps
 import urllib.parse
@@ -130,7 +131,6 @@ def init_db():
     finally:
         conn.close()
 
-import requests  # add this import at the top
 
 # ===================== VERCEL BLOB HELPERS =====================
 
@@ -336,6 +336,66 @@ def login_required(f):
 
 # Initialize database on startup
 # init_db()
+
+@app.route('/download/<int:paper_id>')
+def download_paper(paper_id):
+    """
+    Proxy a paper's PDF through Flask so the browser saves it
+    with the original filename (stored in pdf_filename).
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT pdf_url, pdf_filename, course_code, exam_type, year
+            FROM courses WHERE id = %s
+        """, (paper_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return jsonify({'error': 'Paper not found'}), 404
+
+        blob_url = row['pdf_url']
+
+        # Filename shown to the browser
+        download_name = row['pdf_filename']
+        if not download_name:
+            download_name = f"{row['course_code']}_{row['exam_type']}_{row['year']}.pdf"
+        if not download_name.lower().endswith('.pdf'):
+            download_name += '.pdf'
+
+        # Stream the blob back with a Content-Disposition header
+        upstream = requests.get(blob_url, stream=True, timeout=30)
+        if upstream.status_code != 200:
+            return jsonify({'error': 'Failed to fetch PDF from storage'}), 502
+
+        safe_name = download_name.replace('"', '').replace('\n', '').replace('\r', '')
+
+        headers = {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': f'attachment; filename="{safe_name}"',
+            'Cache-Control': 'private, max-age=300',
+        }
+
+        return Response(
+            stream_with_context(upstream.iter_content(chunk_size=8192)),
+            headers=headers,
+            status=200,
+        )
+
+    except Exception as e:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'error': str(e)}), 500
 
 # ============= AUTH ROUTES =============
 @app.route('/api/admin/login', methods=['POST'])
