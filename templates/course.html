@@ -170,13 +170,21 @@
 
                     let html = '';
                     papers.forEach(function (p) {
+                        // Prefer the stored original filename; fall back to a sensible default
+                        let displayName = p.pdf_filename;
+                        if (!displayName) {
+                            displayName = p.course_code + '_' + p.exam_type + '_' + p.year + '.pdf';
+                        }
+                    
                         html +=
                             '<div class="paper-row">' +
                                 '<div class="paper-info">' +
                                     '<div class="paper-icon"><i class="fas fa-file-pdf"></i></div>' +
                                     '<div class="paper-text">' +
-                                        '<span class="paper-year">' + escapeHtml(p.year) + '</span>' +
-                                        '<span class="paper-type">' + escapeHtml(p.exam_type) + '</span>' +
+                                        '<span class="paper-name">' + escapeHtml(displayName) + '</span>' +
+                                        '<span class="paper-meta">' +
+                                            escapeHtml(p.exam_type) + ' · ' + escapeHtml(p.year) +
+                                        '</span>' +
                                     '</div>' +
                                 '</div>' +
                                 '<a class="paper-download" href="/download/' + p.id + '">' +

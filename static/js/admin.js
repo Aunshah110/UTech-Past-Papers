@@ -472,7 +472,8 @@ class AdminDashboard {
                     ${this.esc(p.exam_type)}
                 </span>
                 <span class="admin-paper-year">${this.esc(p.year)}</span>
-                <a href="/download/${p.id}" target="_blank" rel="noopener" class="admin-paper-link">
+                <a href="${this.esc(p.pdf_url)}" target="_blank" rel="noopener"
+                   class="admin-paper-link">
                     <i class="fas fa-file-pdf"></i> View
                 </a>
                 <button class="admin-paper-delete" data-id="${p.id}"

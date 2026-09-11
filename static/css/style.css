@@ -764,6 +764,26 @@ img { max-width: 100%; display: block; }
     opacity: 0.9;
 }
 
+/* ===== Paper name + meta (replaces .paper-year / .paper-type) ===== */
+.paper-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--brown-800);
+    letter-spacing: 0.2px;
+    word-break: break-word;
+    line-height: 1.35;
+}
+
+.paper-meta {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--brown-700);
+    opacity: 0.85;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-top: 2px;
+}
+
 .paper-row {
     display: flex;
     justify-content: space-between;

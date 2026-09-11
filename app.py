@@ -1,9 +1,10 @@
 import os
 import re
+import hashlib
 import secrets
 import psycopg2
 import psycopg2.extras
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, stream_with_context
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -538,74 +539,6 @@ def get_courses():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/download/<int:paper_id>')
-def download_paper(paper_id):
-    """
-    Proxy a paper's PDF through Flask so the browser saves it with the
-    original filename (stored in pdf_filename) rather than the ugly
-    blob pathname.
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return jsonify({'error': 'Database connection failed'}), 500
-
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("""
-            SELECT pdf_url, pdf_filename, course_code, exam_type, year
-            FROM courses WHERE id = %s
-        """, (paper_id,))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not row:
-            return jsonify({'error': 'Paper not found'}), 404
-
-        blob_url = row['pdf_url']
-
-        # Filename to serve to the browser.
-        # Prefer the stored original; fall back to a sensible default
-        # built from the course metadata.
-        download_name = row['pdf_filename']
-        if not download_name:
-            download_name = f"{row['course_code']}_{row['exam_type']}_{row['year']}.pdf"
-
-        # Ensure it ends in .pdf
-        if not download_name.lower().endswith('.pdf'):
-            download_name += '.pdf'
-
-        # Stream the blob back with a Content-Disposition header that
-        # tells the browser exactly what to save the file as.
-        upstream = requests.get(blob_url, stream=True, timeout=30)
-        if upstream.status_code != 200:
-            return jsonify({'error': 'Failed to fetch PDF from storage'}), 502
-
-        # Sanitise the filename for the header (remove CR/LF and quotes)
-        safe_download_name = download_name.replace('"', '').replace('\n', '').replace('\r', '')
-
-        headers = {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': f'attachment; filename="{safe_download_name}"',
-            'Cache-Control': 'private, max-age=300',
-        }
-
-        return requests.Response(
-            stream_with_context(upstream.iter_content(chunk_size=8192)),
-            headers=headers,
-            status=200,
-        )
-
-    except Exception as e:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/search')
 def search_courses():
     try:
@@ -648,7 +581,7 @@ def search_courses():
 def upload_course():
     """
     Upload a paper. If the course code already exists, only the new paper
-    row is inserted (the homepage automatically groups by code).
+    row is inserted (the card on the homepage automatically groups by code).
     """
     conn = None
     try:
@@ -681,14 +614,11 @@ def upload_course():
         if not pdf_file.filename:
             return jsonify({'error': 'No file selected'}), 400
 
-        # ** NEW ** keep the original name (with spaces/underscores preserved)
-        original_filename = pdf_file.filename.strip()
-
-        filename = secure_filename(original_filename)
+        filename = secure_filename(pdf_file.filename)
         if not filename.lower().endswith('.pdf'):
             return jsonify({'error': 'Only PDF files are allowed'}), 400
 
-        # ---------- 3. Open DB connection ----------
+        # ---------- 3. Open DB connection early (needed for the lookup) ----------
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
@@ -708,9 +638,12 @@ def upload_course():
         is_new_course = existing is None
 
         if is_new_course:
+            # A brand new course — use what the admin typed
             final_name        = course_name
             final_description = description
         else:
+            # Course already exists — keep its canonical name/description.
+            # If the admin typed a new description, adopt it (optional update).
             final_name        = existing['course_name']
             final_description = description or existing['description']
 
@@ -733,17 +666,19 @@ def upload_course():
             }), 409
 
         # ---------- 6. Upload PDF to Vercel Blob ----------
-        # The pathname can be as ugly as we want — students never see it,
-        # because downloads will be proxied through /download/... below.
         try:
             file_content = pdf_file.read()
-            pathname = (
-                f"courses/{course_code}_"
+            safe_original = secure_filename(pdf_file.filename) or "paper.pdf"
+
+            # No timestamp — URL ends with the exact original name.
+            # Uniqueness comes from the DB (course_code + exam_type + year).
+            blob_pathname = (
+                f"courses/{course_code}/"
                 f"{exam_type.lower()}_{year}_"
-                f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_"
-                f"{filename}"
+                f"{safe_original}"
             )
-            pdf_url = upload_pdf_to_blob(pathname, file_content)
+
+            pdf_url = upload_pdf_to_blob(blob_pathname, file_content)
         except Exception as e:
             cur.close()
             conn.close()
@@ -753,9 +688,8 @@ def upload_course():
         try:
             cur.execute("""
                 INSERT INTO courses
-                    (course_name, course_code, description, exam_type, year,
-                     pdf_url, pdf_filename)                     
-                VALUES (%s, %s, %s, %s, %s, %s, %s)           
+                    (course_name, course_code, description, exam_type, year, pdf_url)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 final_name,
@@ -764,11 +698,10 @@ def upload_course():
                 exam_type,
                 year,
                 pdf_url,
-                original_filename,                             
             ))
             new_paper_id = cur.fetchone()['id']
             conn.commit()
-        except psycopg2.IntegrityError:
+        except psycopg2.IntegrityError as ie:
             conn.rollback()
             cur.close()
             conn.close()
@@ -1093,7 +1026,7 @@ def get_course_detail(course_id):
 def get_course_papers(course_id):
     """Return all papers for a course, optionally filtered by exam_type."""
     try:
-        exam_type = request.args.get('type', '').strip()  # Mid | Final | Notes | ''
+        exam_type = request.args.get('type', '').strip()
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
@@ -1110,14 +1043,16 @@ def get_course_papers(course_id):
 
         if exam_type and exam_type in ('Mid', 'Final', 'Notes'):
             cur.execute("""
-                SELECT id, course_name, course_code, exam_type, year, pdf_url, description
+                SELECT id, course_name, course_code, exam_type, year,
+                       pdf_url, pdf_filename, description
                 FROM courses
                 WHERE course_code = %s AND exam_type = %s
                 ORDER BY year DESC
             """, (course_code, exam_type))
         else:
             cur.execute("""
-                SELECT id, course_name, course_code, exam_type, year, pdf_url, description
+                SELECT id, course_name, course_code, exam_type, year,
+                       pdf_url, pdf_filename, description
                 FROM courses
                 WHERE course_code = %s
                 ORDER BY year DESC
@@ -1130,9 +1065,6 @@ def get_course_papers(course_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-import secrets
-print(secrets.token_hex(32))
-
+    
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
