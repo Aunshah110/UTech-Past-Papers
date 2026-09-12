@@ -11,8 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
 from groq import Groq
-import pymupdf as fitz
-import base64, PyPDF2, tempfile
+from pdf_oxide import Pdf
+import base64, tempfile
 
 
 from pathlib import Path
@@ -1130,9 +1130,11 @@ def get_course_papers(course_id):
 
 # Initialize Groq client (outside the route for reuse)
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+
 @app.route('/api/chat/analyze', methods=['POST'])
 def analyze_papers():
-    """Analyze scanned PDFs using Groq's vision model."""
+    """Analyze scanned PDFs using pdf_oxide's built-in OCR."""
     try:
         data = request.get_json() or {}
         course_code = data.get('course_code')
@@ -1159,67 +1161,49 @@ def analyze_papers():
         if not papers:
             return jsonify({'error': 'No matching papers found'}), 404
 
-        # 2. Convert PDF pages to images and encode as base64
-        image_contents = []
+        # 2. Extract text from PDFs using pdf_oxide (handles both text and scanned)
+        extracted_texts = []
         for paper in papers:
             try:
                 response = requests.get(paper['pdf_url'], timeout=15)
                 response.raise_for_status()
-
-                # WORKAROUND: Write to a temp file because fitz.open(stream=...) is broken
-                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                    tmp.write(response.content)
-                    tmp_path = tmp.name
-
-                try:
-                    pdf_doc = fitz.open(tmp_path)  # Open from file path instead of stream
-
-                    for page_num in range(min(2, pdf_doc.page_count)):
-                        page = pdf_doc[page_num]
-                        pix = page.get_pixmap(matrix=fitz.Matrix(72/72, 72/72))
-                        img_bytes = pix.tobytes("jpeg", quality=70)
-                        b64 = base64.b64encode(img_bytes).decode('utf-8')
-                        image_contents.append(f"data:image/jpeg;base64,{b64}")
-
-                    pdf_doc.close()
-                finally:
-                    # Always clean up the temp file
-                    os.unlink(tmp_path)
-
+                
+                # pdf_oxide reads directly from bytes - no temp file needed
+                pdf = Pdf(response.content)
+                
+                # Extract text from up to 3 pages
+                text = pdf.extract_text(0, min(3, pdf.page_count))
+                
+                if text.strip():
+                    extracted_texts.append(f"--- Paper Year: {paper['year']} ---\n{text}")
+                    
             except Exception as e:
-                print(f"Failed to process paper {paper['id']}: {e}")
+                print(f"[PDF ERROR] Paper {paper['id']}: {e}")
                 continue
 
-        if not image_contents:
-            return jsonify({'error': 'Could not convert selected PDFs to images'}), 400
+        if not extracted_texts:
+            return jsonify({'error': 'Could not extract text from the selected PDFs'}), 400
 
-        # Groq limits: max 3-5 images per request. Truncate if needed.
-        image_contents = image_contents[:3]
+        # 3. Combine and truncate text
+        combined_text = "\n\n".join(extracted_texts)
+        max_chars = 12000
+        if len(combined_text) > max_chars:
+            combined_text = combined_text[:max_chars] + "\n\n[... Content Truncated ...]"
 
-        # 3. Build the message with images for Groq
-        user_content = [
-            {
-                "type": "text",
-                "text": f"Analyze these past {exam_type} exam papers for {course_code}. "
-                        f"Based on the patterns, topics, and mark distribution you see in these images, "
-                        f"predict the most likely questions that will appear in the upcoming exam. "
-                        f"Format your response as a structured list grouped by mark value."
-            }
-        ]
-        
-        for img_data in image_contents:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": img_data}
-            })
+        # 4. Call Groq (text-based, no vision needed)
+        system_prompt = f"""You are an expert university examiner. 
+        Analyze the provided past exam papers for {course_code} ({exam_type}). 
+        Based on the patterns, topics, and mark distribution, predict the most likely questions 
+        that will appear in the upcoming exam. Format as a structured list."""
 
-        # 4. Call Groq's vision model
+        user_prompt = f"Here are the past {exam_type} papers:\n\n{combined_text}\n\nWhat questions are most likely to appear?"
+
         chat_completion = groq_client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are an expert university examiner. Read the provided exam paper images and predict likely exam questions."},
-                {"role": "user", "content": user_content}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
-            model="qwen/qwen3.6-27b",  # Vision-capable model
+            model="llama-3.3-70b-versatile",
             temperature=0.5,
             max_completion_tokens=1024,
             stream=False
@@ -1229,7 +1213,7 @@ def analyze_papers():
         return jsonify({'prediction': prediction})
 
     except Exception as e:
-        print(f"[CHATBOT ERROR] {type(e).__name__}: {e}") # Logs to Vercel
+        print(f"[CHATBOT ERROR] {type(e).__name__}: {e}")
         return jsonify({'error': 'Analysis failed. Please try again.'}), 500
         
 if __name__ == '__main__':
