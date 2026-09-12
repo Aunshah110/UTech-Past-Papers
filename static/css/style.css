@@ -731,6 +731,60 @@ img { max-width: 100%; display: block; }
     box-shadow: 0 6px 14px rgba(90, 54, 32, 0.32);
 }
 
+/* ============ NAV RIGHT (feedback pill) ============ */
+.nav-right {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nav-feedback {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    border: 1.6px solid var(--brown-600);
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(6px);
+    color: var(--brown-800);
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow:
+        0 2px 8px rgba(90, 54, 32, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition: var(--t);
+}
+
+.nav-feedback i {
+    font-size: 0.9rem;
+    color: var(--brown-600);
+    transition: var(--t);
+}
+
+.nav-feedback:link,
+.nav-feedback:visited,
+.nav-feedback:hover,
+.nav-feedback:active {
+    text-decoration: none;
+}
+
+.nav-feedback:hover {
+    background: var(--btn-grad);
+    color: #fff;
+    border-color: transparent;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(90, 54, 32, 0.28);
+}
+
+.nav-feedback:hover i {
+    color: #fff;
+}
+
 /* ============================================================
    PAPERS LIST
    ============================================================ */
@@ -987,6 +1041,13 @@ img { max-width: 100%; display: block; }
     .brand-logo { width: 34px; height: 34px; }
     .brand-line { font-size: 0.78rem; letter-spacing: 0.7px; }
     .nav-icon { width: 30px; height: 30px; font-size: 0.85rem; }
+
+    .nav-feedback {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.78rem;
+        gap: 0.35rem;
+    }
+    .nav-feedback i { font-size: 0.8rem; }
 }
 
 /* --- Very small phones --- */
@@ -1006,6 +1067,9 @@ img { max-width: 100%; display: block; }
 
     .container { padding: 0 0.8rem; }
     .course-detail-card { padding: 1.1rem; }
+
+    .nav-feedback span { display: none; }   /* show icon only on tiny screens */
+    .nav-feedback { padding: 0.4rem 0.55rem; }
 }
 
 /* --- Reduced motion --- */
