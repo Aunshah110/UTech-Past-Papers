@@ -1,6 +1,4 @@
-import os
-import re
-import hashlib
+import os, io
 import secrets
 import psycopg2
 import psycopg2.extras
@@ -12,7 +10,9 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
-import urllib.parse
+import PyPDF2
+from groq import Groq
+
 
 from pathlib import Path
 
@@ -1125,6 +1125,114 @@ def get_course_papers(course_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# Initialize Groq client (outside the route for reuse)
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+@app.route('/api/chat/analyze', methods=['POST'])
+def analyze_papers():
+    """
+    Analyze selected papers for a course and predict exam questions.
+    Expects JSON: {
+        "course_code": "CS-301",
+        "exam_type": "Mid",
+        "paper_ids": [12, 15]  # IDs from the courses table
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        course_code = data.get('course_code')
+        exam_type = data.get('exam_type')
+        paper_ids = data.get('paper_ids', [])
+
+        if not paper_ids:
+            return jsonify({'error': 'No papers selected for analysis'}), 400
+
+        # 1. Fetch the PDF URLs from your database
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        # Using "= ANY" is safe with psycopg2 when passing a list
+        cur.execute("""
+            SELECT id, pdf_url, year FROM courses 
+            WHERE id = ANY(%s) AND course_code = %s
+        """, (paper_ids, course_code))
+        papers = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        if not papers:
+            return jsonify({'error': 'No matching papers found'}), 404
+
+        # 2. Extract text from the PDFs
+        extracted_texts = []
+        for paper in papers:
+            try:
+                # Download PDF bytes from Vercel Blob
+                response = requests.get(paper['pdf_url'], timeout=10)
+                response.raise_for_status()
+                
+                # Extract text using PyPDF2
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(response.content))
+                text = ""
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                
+                if text.strip():
+                    extracted_texts.append(f"--- Paper Year: {paper['year']} ---\n{text}")
+            except Exception as e:
+                # Log the error but continue with other papers if one fails
+                print(f"Failed to process paper {paper['id']}: {e}")
+                continue
+
+        if not extracted_texts:
+            return jsonify({'error': 'Could not extract text from the selected PDFs'}), 400
+
+        # 3. Combine text (with a limit to prevent token overflow)
+        combined_text = "\n\n".join(extracted_texts)
+        # Truncate to approx 12,000 characters (~3000 tokens) to stay well within limits
+        max_chars = 12000 
+        if len(combined_text) > max_chars:
+            combined_text = combined_text[:max_chars] + "\n\n[... Content Truncated ...]"
+
+        # 4. Construct the prompt for Groq
+        system_prompt = """You are an expert university examiner. 
+        Analyze the provided past exam papers. Based on the patterns, topics, and mark distribution, 
+        predict the most likely questions that will appear in the upcoming {exam_type} exam for {course_code}.
+        
+        Format your response as a structured list. Group questions by mark value if possible (e.g., Short Questions (5 Marks), Long Questions (10 Marks)).
+        Be specific and refer to topics covered in the past papers."""
+
+        user_prompt = f"""Here are the past {exam_type} papers for {course_code}:
+
+        {combined_text}
+
+        Based on these papers, what questions are most likely to appear in the upcoming {exam_type} exam?"""
+
+        # 5. Call Groq API
+        # Using Llama 3.3 70B as it's fast, free-tier friendly, and good at reasoning [citation:3][citation:9]
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt.format(exam_type=exam_type, course_code=course_code)},
+                {"role": "user", "content": user_prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.5, # Moderate creativity
+            max_completion_tokens=1024,
+            stream=False # Keep it simple for now; streaming is an advanced next step
+        )
+
+        prediction = chat_completion.choices[0].message.content
+        return jsonify({'prediction': prediction})
+
+    except Exception as e:
+        print(f"Chatbot analysis error: {e}")
+        return jsonify({'error': 'Analysis failed. Please try again.'}), 500
     
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
