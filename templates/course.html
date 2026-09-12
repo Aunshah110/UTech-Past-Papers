@@ -84,72 +84,72 @@
             </div>
         </div>
 
-        <!-- ============================================================
+    <!-- ============================================================
      FLOATING AI CHATBOT
      ============================================================ -->
 
-<!-- Floating action button -->
-<button id="chatFab" class="chat-fab" aria-label="Open AI Exam Predictor">
-    <i class="fas fa-robot"></i>
-    <span class="chat-fab-badge" id="chatFabBadge">AI</span>
-</button>
+    <!-- Floating action button -->
+    <button id="chatFab" class="chat-fab" aria-label="Open AI Exam Predictor">
+        <i class="fas fa-robot"></i>
+        <span class="chat-fab-badge" id="chatFabBadge">AI</span>
+    </button>
 
-<!-- Chat panel -->
-<div id="chatPanel" class="chat-panel" aria-hidden="true">
-    <!-- Header -->
-    <div class="chat-header">
-        <div class="chat-header-info">
-            <div class="chat-header-avatar">
-                <i class="fas fa-robot"></i>
-            </div>
-            <div class="chat-header-text">
-                <span class="chat-header-title">AI Exam Predictor</span>
-                <span class="chat-header-sub" id="chatHeaderSub">Ready to analyze</span>
-            </div>
-        </div>
-        <button id="chatCloseBtn" class="chat-close" aria-label="Close chat">
-            <i class="fas fa-times"></i>
-        </button>
-    </div>
-
-    <!-- Messages -->
-    <div id="chatMessages" class="chat-messages">
-        <div class="chat-bubble bot">
-            <div class="chat-bubble-content">
-                <p>Hi 👋 I can help you predict exam questions based on past papers.</p>
-                <p>Select one or more papers below, then click <strong>Analyze</strong>.</p>
-            </div>
-        </div>
-
-        <!-- Paper selector appears as a message -->
-        <div class="chat-paper-selector" id="chatPaperSelector">
-            <div class="chat-selector-header">
-                <i class="fas fa-file-pdf"></i>
-                <span>Available papers for this course</span>
-            </div>
-            <div class="chat-selector-list" id="chatSelectorList">
-                <div class="chat-selector-loading">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span>Loading papers…</span>
+    <!-- Chat panel -->
+    <div id="chatPanel" class="chat-panel" aria-hidden="true">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="chat-header-info">
+                <div class="chat-header-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="chat-header-text">
+                    <span class="chat-header-title">AI Exam Predictor</span>
+                    <span class="chat-header-sub" id="chatHeaderSub">Ready to analyze</span>
                 </div>
             </div>
-            <div class="chat-selector-actions">
-                <button id="chatAnalyzeBtn" class="chat-analyze-btn" disabled>
-                    <i class="fas fa-magic"></i> Analyze Selected
-                </button>
-                <span class="chat-selector-hint" id="chatSelectorHint">0 selected</span>
+            <button id="chatCloseBtn" class="chat-close" aria-label="Close chat">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Messages -->
+        <div id="chatMessages" class="chat-messages">
+            <div class="chat-bubble bot">
+                <div class="chat-bubble-content">
+                    <p>Hi 👋 I can help you predict exam questions based on past papers.</p>
+                    <p>Select one or more papers below, then click <strong>Analyze</strong>.</p>
+                </div>
+            </div>
+
+            <!-- Paper selector appears as a message -->
+            <div class="chat-paper-selector" id="chatPaperSelector">
+                <div class="chat-selector-header">
+                    <i class="fas fa-file-pdf"></i>
+                    <span>Available papers for this course</span>
+                </div>
+                <div class="chat-selector-list" id="chatSelectorList">
+                    <div class="chat-selector-loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Loading papers…</span>
+                    </div>
+                </div>
+                <div class="chat-selector-actions">
+                    <button id="chatAnalyzeBtn" class="chat-analyze-btn" disabled>
+                        <i class="fas fa-magic"></i> Analyze Selected
+                    </button>
+                    <span class="chat-selector-hint" id="chatSelectorHint">0 selected</span>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Typing indicator (hidden by default) -->
-    <div id="chatTyping" class="chat-typing" aria-hidden="true">
-        <span></span><span></span><span></span>
-    </div>
-    </div>
+        <!-- Typing indicator (hidden by default) -->
+        <div id="chatTyping" class="chat-typing" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </div>
+        </div>
 
-        <!-- Click-away overlay for mobile -->
-        <div id="chatOverlay" class="chat-overlay" aria-hidden="true"></div>
+            <!-- Click-away overlay for mobile --> 
+            <div id="chatOverlay" class="chat-overlay" aria-hidden="true"></div>
     </main>
 
     <script>
