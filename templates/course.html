@@ -292,228 +292,228 @@
         }
     })();
 
-// ============================================================
-// FLOATING AI CHATBOT
-// ============================================================
-
-// DOM refs
-const chatFab         = document.getElementById('chatFab');
-const chatPanel       = document.getElementById('chatPanel');
-const chatCloseBtn    = document.getElementById('chatCloseBtn');
-const chatOverlay     = document.getElementById('chatOverlay');
-const chatMessages    = document.getElementById('chatMessages');
-const chatTyping      = document.getElementById('chatTyping');
-const chatHeaderSub   = document.getElementById('chatHeaderSub');
-const chatSelectorList = document.getElementById('chatSelectorList');
-const chatAnalyzeBtn  = document.getElementById('chatAnalyzeBtn');
-const chatSelectorHint = document.getElementById('chatSelectorHint');
-
-let chatOpen = false;
-let chatPapersLoaded = false;
-let chatAllPapers = [];
-
-// ---------- Open / close ----------
-function openChat() {
-    chatOpen = true;
-    chatPanel.classList.add('open');
-    chatPanel.setAttribute('aria-hidden', 'false');
-    chatFab.classList.add('hidden');
-    chatOverlay.classList.add('visible');
-
-    // Lock body scroll on mobile so the sheet feels native
-    if (window.innerWidth <= 520) {
-        document.body.style.overflow = 'hidden';
+    // ============================================================
+    // FLOATING AI CHATBOT
+    // ============================================================
+    
+    // DOM refs
+    const chatFab         = document.getElementById('chatFab');
+    const chatPanel       = document.getElementById('chatPanel');
+    const chatCloseBtn    = document.getElementById('chatCloseBtn');
+    const chatOverlay     = document.getElementById('chatOverlay');
+    const chatMessages    = document.getElementById('chatMessages');
+    const chatTyping      = document.getElementById('chatTyping');
+    const chatHeaderSub   = document.getElementById('chatHeaderSub');
+    const chatSelectorList = document.getElementById('chatSelectorList');
+    const chatAnalyzeBtn  = document.getElementById('chatAnalyzeBtn');
+    const chatSelectorHint = document.getElementById('chatSelectorHint');
+    
+    let chatOpen = false;
+    let chatPapersLoaded = false;
+    let chatAllPapers = [];
+    
+    // ---------- Open / close ----------
+    function openChat() {
+        chatOpen = true;
+        chatPanel.classList.add('open');
+        chatPanel.setAttribute('aria-hidden', 'false');
+        chatFab.classList.add('hidden');
+        chatOverlay.classList.add('visible');
+    
+        // Lock body scroll on mobile so the sheet feels native
+        if (window.innerWidth <= 520) {
+            document.body.style.overflow = 'hidden';
+        }
+    
+        if (!chatPapersLoaded) {
+            loadChatPapers();
+        }
+    
+        // Focus the first interactive element
+        setTimeout(() => {
+            const first = chatPanel.querySelector('input, button:not([disabled])');
+            if (first) first.focus();
+        }, 200);
     }
-
-    if (!chatPapersLoaded) {
-        loadChatPapers();
+    
+    function closeChat() {
+        chatOpen = false;
+        chatPanel.classList.remove('open');
+        chatPanel.setAttribute('aria-hidden', 'true');
+        chatOverlay.classList.remove('visible');
+        document.body.style.overflow = '';
+        setTimeout(() => chatFab.classList.remove('hidden'), 200);
     }
-
-    // Focus the first interactive element
-    setTimeout(() => {
-        const first = chatPanel.querySelector('input, button:not([disabled])');
-        if (first) first.focus();
-    }, 200);
-}
-
-function closeChat() {
-    chatOpen = false;
-    chatPanel.classList.remove('open');
-    chatPanel.setAttribute('aria-hidden', 'true');
-    chatOverlay.classList.remove('visible');
-    document.body.style.overflow = '';
-    setTimeout(() => chatFab.classList.remove('hidden'), 200);
-}
-
-chatFab.addEventListener('click', openChat);
-chatCloseBtn.addEventListener('click', closeChat);
-chatOverlay.addEventListener('click', closeChat);
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && chatOpen) closeChat();
-});
-
-// ---------- Load papers into the selector ----------
-function loadChatPapers() {
-    fetch('/api/course/' + safeId + '/papers')
-        .then(r => r.json())
-        .then(data => {
-            chatAllPapers = data.papers || [];
-            chatPapersLoaded = true;
-            renderChatSelector(chatAllPapers);
-        })
-        .catch(err => {
-            console.error('Chat papers load error:', err);
+    
+    chatFab.addEventListener('click', openChat);
+    chatCloseBtn.addEventListener('click', closeChat);
+    chatOverlay.addEventListener('click', closeChat);
+    
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && chatOpen) closeChat();
+    });
+    
+    // ---------- Load papers into the selector ----------
+    function loadChatPapers() {
+        fetch('/api/course/' + safeId + '/papers')
+            .then(r => r.json())
+            .then(data => {
+                chatAllPapers = data.papers || [];
+                chatPapersLoaded = true;
+                renderChatSelector(chatAllPapers);
+            })
+            .catch(err => {
+                console.error('Chat papers load error:', err);
+                chatSelectorList.innerHTML =
+                    '<div class="chat-selector-empty">' +
+                        '<i class="fas fa-exclamation-triangle"></i>' +
+                        '<span>Could not load papers</span>' +
+                    '</div>';
+            });
+    }
+    
+    function renderChatSelector(papers) {
+        if (!papers.length) {
             chatSelectorList.innerHTML =
                 '<div class="chat-selector-empty">' +
-                    '<i class="fas fa-exclamation-triangle"></i>' +
-                    '<span>Could not load papers</span>' +
+                    '<i class="fas fa-inbox"></i>' +
+                    '<span>No papers uploaded yet</span>' +
                 '</div>';
-        });
-}
-
-function renderChatSelector(papers) {
-    if (!papers.length) {
-        chatSelectorList.innerHTML =
-            '<div class="chat-selector-empty">' +
-                '<i class="fas fa-inbox"></i>' +
-                '<span>No papers uploaded yet</span>' +
-            '</div>';
-        chatAnalyzeBtn.disabled = true;
-        chatSelectorHint.textContent = '0 selected';
-        return;
-    }
-
-    // Sort: Mid first, then Final, then Notes; newest year first within each
-    const order = { Mid: 0, Final: 1, Notes: 2 };
-    const sorted = [...papers].sort((a, b) => {
-        const oa = order[a.exam_type] ?? 9;
-        const ob = order[b.exam_type] ?? 9;
-        if (oa !== ob) return oa - ob;
-        return (b.year || 0) - (a.year || 0);
-    });
-
-    chatSelectorList.innerHTML = sorted.map(p => {
-        const name = p.pdf_filename || (p.course_code + '_' + p.exam_type + '_' + p.year + '.pdf');
-        return (
-            '<label class="chat-paper-item" data-id="' + p.id + '">' +
-                '<input type="checkbox" class="chat-paper-checkbox" value="' + p.id + '">' +
-                '<span class="chat-paper-meta">' +
-                    '<span class="chat-paper-name">' + escapeHtml(name) + '</span>' +
-                    '<span class="chat-paper-sub">' + escapeHtml(p.exam_type) + ' · ' + escapeHtml(p.year) + '</span>' +
-                '</span>' +
-            '</label>'
-        );
-    }).join('');
-
-    chatSelectorList.querySelectorAll('.chat-paper-checkbox').forEach(cb => {
-        cb.addEventListener('change', onPaperToggle);
-    });
-
-    updateSelectorState();
-}
-
-function onPaperToggle(e) {
-    const label = e.target.closest('.chat-paper-item');
-    if (label) label.classList.toggle('selected', e.target.checked);
-    updateSelectorState();
-}
-
-function updateSelectorState() {
-    const checked = chatSelectorList.querySelectorAll('.chat-paper-checkbox:checked');
-    const count = checked.length;
-    chatAnalyzeBtn.disabled = count === 0;
-    chatSelectorHint.textContent = count + ' selected';
-    chatHeaderSub.textContent = count === 0
-        ? 'Ready to analyze'
-        : count + ' paper' + (count === 1 ? '' : 's') + ' selected';
-}
-
-// ---------- Analyze ----------
-chatAnalyzeBtn.addEventListener('click', async () => {
-    const checked = chatSelectorList.querySelectorAll('.chat-paper-checkbox:checked');
-    const ids = Array.from(checked).map(cb => parseInt(cb.value, 10));
-
-    if (!ids.length) return;
-
-    // Determine the exam_type from the selected papers (assume first one)
-    const firstPaper = chatAllPapers.find(p => p.id === ids[0]);
-    const examType = firstPaper ? firstPaper.exam_type : 'Mid';
-    const courseCode = firstPaper ? firstPaper.course_code : '';
-
-    // Append user bubble
-    appendUserBubble(
-        'Analyze ' + ids.length + ' ' + examType +
-        ' paper' + (ids.length === 1 ? '' : 's') + '.'
-    );
-
-    // Append a placeholder bot bubble we'll fill in
-    const botBubble = appendBotBubble('Analyzing…');
-
-    // Show typing dots
-    chatTyping.classList.add('visible');
-    chatAnalyzeBtn.disabled = true;
-    const originalBtnHtml = chatAnalyzeBtn.innerHTML;
-    chatAnalyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing…';
-
-    try {
-        const res = await fetch('/api/chat/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                course_code: courseCode,
-                exam_type: examType,
-                paper_ids: ids
-            })
-        });
-
-        const data = await res.json();
-        chatTyping.classList.remove('visible');
-
-        if (res.ok && data.prediction) {
-            botBubble.classList.add('prediction');
-            botBubble.textContent = data.prediction;
-        } else {
-            botBubble.textContent = '⚠ ' + (data.error || 'Analysis failed. Please try again.');
+            chatAnalyzeBtn.disabled = true;
+            chatSelectorHint.textContent = '0 selected';
+            return;
         }
-    } catch (err) {
-        console.error('Chat analyze error:', err);
-        chatTyping.classList.remove('visible');
-        botBubble.textContent = '⚠ Network error. Please check your connection and try again.';
-    } finally {
-        chatAnalyzeBtn.disabled = false;
-        chatAnalyzeBtn.innerHTML = originalBtnHtml;
-        scrollChatToBottom();
+    
+        // Sort: Mid first, then Final, then Notes; newest year first within each
+        const order = { Mid: 0, Final: 1, Notes: 2 };
+        const sorted = [...papers].sort((a, b) => {
+            const oa = order[a.exam_type] ?? 9;
+            const ob = order[b.exam_type] ?? 9;
+            if (oa !== ob) return oa - ob;
+            return (b.year || 0) - (a.year || 0);
+        });
+    
+        chatSelectorList.innerHTML = sorted.map(p => {
+            const name = p.pdf_filename || (p.course_code + '_' + p.exam_type + '_' + p.year + '.pdf');
+            return (
+                '<label class="chat-paper-item" data-id="' + p.id + '">' +
+                    '<input type="checkbox" class="chat-paper-checkbox" value="' + p.id + '">' +
+                    '<span class="chat-paper-meta">' +
+                        '<span class="chat-paper-name">' + escapeHtml(name) + '</span>' +
+                        '<span class="chat-paper-sub">' + escapeHtml(p.exam_type) + ' · ' + escapeHtml(p.year) + '</span>' +
+                    '</span>' +
+                '</label>'
+            );
+        }).join('');
+    
+        chatSelectorList.querySelectorAll('.chat-paper-checkbox').forEach(cb => {
+            cb.addEventListener('change', onPaperToggle);
+        });
+    
+        updateSelectorState();
     }
-});
-
-// ---------- Message helpers ----------
-function appendUserBubble(text) {
-    const el = document.createElement('div');
-    el.className = 'chat-bubble user';
-    el.innerHTML = '<div class="chat-bubble-content">' + escapeHtml(text) + '</div>';
-    chatMessages.appendChild(el);
-    scrollChatToBottom();
-    return el;
-}
-
-function appendBotBubble(text) {
-    const el = document.createElement('div');
-    el.className = 'chat-bubble bot';
-    const content = document.createElement('div');
-    content.className = 'chat-bubble-content';
-    content.textContent = text;
-    el.appendChild(content);
-    chatMessages.appendChild(el);
-    scrollChatToBottom();
-    return content;
-}
-
-function scrollChatToBottom() {
-    requestAnimationFrame(() => {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    function onPaperToggle(e) {
+        const label = e.target.closest('.chat-paper-item');
+        if (label) label.classList.toggle('selected', e.target.checked);
+        updateSelectorState();
+    }
+    
+    function updateSelectorState() {
+        const checked = chatSelectorList.querySelectorAll('.chat-paper-checkbox:checked');
+        const count = checked.length;
+        chatAnalyzeBtn.disabled = count === 0;
+        chatSelectorHint.textContent = count + ' selected';
+        chatHeaderSub.textContent = count === 0
+            ? 'Ready to analyze'
+            : count + ' paper' + (count === 1 ? '' : 's') + ' selected';
+    }
+    
+    // ---------- Analyze ----------
+    chatAnalyzeBtn.addEventListener('click', async () => {
+        const checked = chatSelectorList.querySelectorAll('.chat-paper-checkbox:checked');
+        const ids = Array.from(checked).map(cb => parseInt(cb.value, 10));
+    
+        if (!ids.length) return;
+    
+        // Determine the exam_type from the selected papers (assume first one)
+        const firstPaper = chatAllPapers.find(p => p.id === ids[0]);
+        const examType = firstPaper ? firstPaper.exam_type : 'Mid';
+        const courseCode = firstPaper ? firstPaper.course_code : '';
+    
+        // Append user bubble
+        appendUserBubble(
+            'Analyze ' + ids.length + ' ' + examType +
+            ' paper' + (ids.length === 1 ? '' : 's') + '.'
+        );
+    
+        // Append a placeholder bot bubble we'll fill in
+        const botBubble = appendBotBubble('Analyzing…');
+    
+        // Show typing dots
+        chatTyping.classList.add('visible');
+        chatAnalyzeBtn.disabled = true;
+        const originalBtnHtml = chatAnalyzeBtn.innerHTML;
+        chatAnalyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing…';
+    
+        try {
+            const res = await fetch('/api/chat/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    course_code: courseCode,
+                    exam_type: examType,
+                    paper_ids: ids
+                })
+            });
+        
+            const data = await res.json();
+            chatTyping.classList.remove('visible');
+        
+            if (res.ok && data.prediction) {
+                botBubble.classList.add('prediction');
+                botBubble.textContent = data.prediction;
+            } else {
+                botBubble.textContent = '⚠ ' + (data.error || 'Analysis failed. Please try again.');
+            }
+        } catch (err) {
+            console.error('Chat analyze error:', err);
+            chatTyping.classList.remove('visible');
+            botBubble.textContent = '⚠ Network error. Please check your connection and try again.';
+        } finally {
+            chatAnalyzeBtn.disabled = false;
+            chatAnalyzeBtn.innerHTML = originalBtnHtml;
+            scrollChatToBottom();
+        }
     });
-}
+    
+    // ---------- Message helpers ----------
+    function appendUserBubble(text) {
+        const el = document.createElement('div');
+        el.className = 'chat-bubble user';
+        el.innerHTML = '<div class="chat-bubble-content">' + escapeHtml(text) + '</div>';
+        chatMessages.appendChild(el);
+        scrollChatToBottom();
+        return el;
+    }
+    
+    function appendBotBubble(text) {
+        const el = document.createElement('div');
+        el.className = 'chat-bubble bot';
+        const content = document.createElement('div');
+        content.className = 'chat-bubble-content';
+        content.textContent = text;
+        el.appendChild(content);
+        chatMessages.appendChild(el);
+        scrollChatToBottom();
+        return content;
+    }
+    
+    function scrollChatToBottom() {
+        requestAnimationFrame(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+    }
     </script>
 </body>
 </html>
