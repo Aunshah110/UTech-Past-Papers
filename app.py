@@ -12,6 +12,7 @@ import datetime
 from functools import wraps
 import PyPDF2
 from groq import Groq
+import fitz, base64
 
 
 from pathlib import Path
@@ -1129,17 +1130,9 @@ def get_course_papers(course_id):
 
 # Initialize Groq client (outside the route for reuse)
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-
 @app.route('/api/chat/analyze', methods=['POST'])
 def analyze_papers():
-    """
-    Analyze selected papers for a course and predict exam questions.
-    Expects JSON: {
-        "course_code": "CS-301",
-        "exam_type": "Mid",
-        "paper_ids": [12, 15]  # IDs from the courses table
-    }
-    """
+    """Analyze scanned PDFs using Groq's vision model."""
     try:
         data = request.get_json() or {}
         course_code = data.get('course_code')
@@ -1155,7 +1148,6 @@ def analyze_papers():
             return jsonify({'error': 'Database connection failed'}), 500
 
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        # Using "= ANY" is safe with psycopg2 when passing a list
         cur.execute("""
             SELECT id, pdf_url, year FROM courses 
             WHERE id = ANY(%s) AND course_code = %s
@@ -1167,64 +1159,63 @@ def analyze_papers():
         if not papers:
             return jsonify({'error': 'No matching papers found'}), 404
 
-        # 2. Extract text from the PDFs
-        extracted_texts = []
+        # 2. Convert PDF pages to images and encode as base64
+        image_contents = []
         for paper in papers:
             try:
-                # Download PDF bytes from Vercel Blob
-                response = requests.get(paper['pdf_url'], timeout=10)
+                response = requests.get(paper['pdf_url'], timeout=15)
                 response.raise_for_status()
                 
-                # Extract text using PyPDF2
-                pdf_reader = PyPDF2.PdfReader(io.BytesIO(response.content))
-                text = ""
-                for page in pdf_reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                # Open PDF from bytes
+                pdf_doc = fitz.open(stream=response.content, filetype="pdf")
                 
-                if text.strip():
-                    extracted_texts.append(f"--- Paper Year: {paper['year']} ---\n{text}")
+                # Limit to first 2 pages per paper to stay within Vercel/Groq limits
+                for page_num in range(min(2, pdf_doc.page_count)):
+                    page = pdf_doc[page_num]
+                    # Render page to image at 150 DPI
+                    pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+                    img_bytes = pix.tobytes("jpeg")
+                    b64 = base64.b64encode(img_bytes).decode('utf-8')
+                    image_contents.append(f"data:image/jpeg;base64,{b64}")
+                
+                pdf_doc.close()
             except Exception as e:
-                # Log the error but continue with other papers if one fails
                 print(f"Failed to process paper {paper['id']}: {e}")
                 continue
 
-        if not extracted_texts:
-            return jsonify({'error': 'Could not extract text from the selected PDFs'}), 400
+        if not image_contents:
+            return jsonify({'error': 'Could not convert selected PDFs to images'}), 400
 
-        # 3. Combine text (with a limit to prevent token overflow)
-        combined_text = "\n\n".join(extracted_texts)
-        # Truncate to approx 12,000 characters (~3000 tokens) to stay well within limits
-        max_chars = 12000 
-        if len(combined_text) > max_chars:
-            combined_text = combined_text[:max_chars] + "\n\n[... Content Truncated ...]"
+        # Groq limits: max 3-5 images per request. Truncate if needed.
+        image_contents = image_contents[:3]
 
-        # 4. Construct the prompt for Groq
-        system_prompt = """You are an expert university examiner. 
-        Analyze the provided past exam papers. Based on the patterns, topics, and mark distribution, 
-        predict the most likely questions that will appear in the upcoming {exam_type} exam for {course_code}.
+        # 3. Build the message with images for Groq
+        user_content = [
+            {
+                "type": "text",
+                "text": f"Analyze these past {exam_type} exam papers for {course_code}. "
+                        f"Based on the patterns, topics, and mark distribution you see in these images, "
+                        f"predict the most likely questions that will appear in the upcoming exam. "
+                        f"Format your response as a structured list grouped by mark value."
+            }
+        ]
         
-        Format your response as a structured list. Group questions by mark value if possible (e.g., Short Questions (5 Marks), Long Questions (10 Marks)).
-        Be specific and refer to topics covered in the past papers."""
+        for img_data in image_contents:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": img_data}
+            })
 
-        user_prompt = f"""Here are the past {exam_type} papers for {course_code}:
-
-        {combined_text}
-
-        Based on these papers, what questions are most likely to appear in the upcoming {exam_type} exam?"""
-
-        # 5. Call Groq API
-        # Using Llama 3.3 70B as it's fast, free-tier friendly, and good at reasoning [citation:3][citation:9]
+        # 4. Call Groq's vision model
         chat_completion = groq_client.chat.completions.create(
             messages=[
-                {"role": "system", "content": system_prompt.format(exam_type=exam_type, course_code=course_code)},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": "You are an expert university examiner. Read the provided exam paper images and predict likely exam questions."},
+                {"role": "user", "content": user_content}
             ],
-            model="llama-3.3-70b-versatile",
-            temperature=0.5, # Moderate creativity
+            model="qwen/qwen3.6-27b",  # Vision-capable model
+            temperature=0.5,
             max_completion_tokens=1024,
-            stream=False # Keep it simple for now; streaming is an advanced next step
+            stream=False
         )
 
         prediction = chat_completion.choices[0].message.content
