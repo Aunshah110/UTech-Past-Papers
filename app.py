@@ -11,8 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
 from groq import Groq
-import fitz 
-import base64, PyPDF2
+import pymupdf as fitz
+import base64, PyPDF2, tempfile
 
 
 from pathlib import Path
@@ -1165,24 +1165,27 @@ def analyze_papers():
             try:
                 response = requests.get(paper['pdf_url'], timeout=15)
                 response.raise_for_status()
-                
-                # Open PDF from bytes
-                pdf_doc = fitz.open(stream=response.content, filetype="pdf")
-                
-                # Limit to first 2 pages per paper to stay within Vercel/Groq limits
-                for page_num in range(min(2, pdf_doc.page_count)):
-                    page = pdf_doc[page_num]
-                    # Render at 72 DPI (not 150) to keep size down
-                    pix = page.get_pixmap(matrix=fitz.Matrix(72/72, 72/72)) # 72 DPI = 1:1
-                    img_bytes = pix.tobytes("jpeg", quality=70) # Compress harder
-                    b64 = base64.b64encode(img_bytes).decode('utf-8')
-                    image_contents.append(f"data:image/jpeg;base64,{b64}")
 
-                    # Cap at 2 images total to stay safe
-                    if len(image_contents) >= 2:
-                        break
-                
-                pdf_doc.close()
+                # WORKAROUND: Write to a temp file because fitz.open(stream=...) is broken
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                    tmp.write(response.content)
+                    tmp_path = tmp.name
+
+                try:
+                    pdf_doc = fitz.open(tmp_path)  # Open from file path instead of stream
+
+                    for page_num in range(min(2, pdf_doc.page_count)):
+                        page = pdf_doc[page_num]
+                        pix = page.get_pixmap(matrix=fitz.Matrix(72/72, 72/72))
+                        img_bytes = pix.tobytes("jpeg", quality=70)
+                        b64 = base64.b64encode(img_bytes).decode('utf-8')
+                        image_contents.append(f"data:image/jpeg;base64,{b64}")
+
+                    pdf_doc.close()
+                finally:
+                    # Always clean up the temp file
+                    os.unlink(tmp_path)
+
             except Exception as e:
                 print(f"Failed to process paper {paper['id']}: {e}")
                 continue
