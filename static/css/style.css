@@ -230,51 +230,91 @@ img { max-width: 100%; display: block; }
     position: relative;
     display: inline-block;
     font-size: clamp(1.8rem, 5vw, 3.2rem);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: -1px;
     color: var(--brown-900);
     padding: 0.15em 0.45em;
     cursor: default;
     text-shadow: 0 2px 8px rgba(255, 255, 255, 0.55);
-    transition: color 0.25s ease;
     border-radius: 12px;
     isolation: isolate;
+    line-height: 1.1;
 }
 
+/* The visible dark text — its only job is to be the base layer */
+.slide-title-text {
+    position: relative;
+    display: inline-block;
+    z-index: 1;
+}
+
+/* The black circle that follows the cursor */
 .slide-title::before {
     content: '';
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: var(--hl-left, 0%);
-    width: var(--hl-width, 0%);
-    background: linear-gradient(
-        90deg,
-        rgba(90, 54, 32, 0.14),
-        rgba(255, 218, 121, 0.42),
-        rgba(90, 54, 32, 0.14)
-    );
-    border-radius: 12px;
-    opacity: var(--hl-opacity, 0);
-    transition:
-        left 0.12s ease-out,
-        width 0.16s ease-out,
-        opacity 0.22s ease;
-    z-index: -1;
+    width: 60px;
+    height: 60px;
+    left: var(--cursor-x, 50%);
+    top: var(--cursor-y, 50%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #262424;
+    opacity: var(--cursor-opacity, 0);
     pointer-events: none;
+    z-index: 2;
+    transition:
+        left 0.08s linear,
+        top 0.08s linear,
+        opacity 0.2s ease;
 }
 
-.slide-title:hover { color: var(--brown-600); }
+/* The golden copy of the text, revealed only inside the circle */
+.slide-title::after {
+    content: attr(data-text);
+    position: absolute;
 
-.slide-title.sub {
-    display: block;
-    margin-top: 0.4rem;
-    font-size: clamp(0.95rem, 2.4vw, 1.4rem);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--brown-700);
-    padding: 0.25em 0.7em;
+    /* Anchor to the padding box — same origin as .slide-title-text */
+    top: 0.15em;
+    left: 0.45em;
+    white-space: nowrap;
+
+    /* Inherit all typography so both layers overlap perfectly */
+    font-family: inherit;
+    font-size: inherit;  
+    font-weight: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+
+    color: #f1e5c4;
+    -webkit-text-fill-color: #f1e5c4;
+    text-shadow: 0 0 10px rgba(255, 218, 121, 0.6);
+
+    /* Circle mask follows the cursor, offset back by the padding */
+    -webkit-mask-image: radial-gradient(
+        circle 32.5px at
+        calc(var(--cursor-x, 50%) - 0.45em)
+        calc(var(--cursor-y, 50%) - 0.15em),
+        #000 99%,
+        transparent 100%
+    );
+            mask-image: radial-gradient(
+        circle 32.5px at
+        calc(var(--cursor-x, 50%) - 0.45em)
+        calc(var(--cursor-y, 50%) - 0.15em),
+        #000 99%,
+        transparent 100%
+    );
+
+    opacity: var(--cursor-opacity, 0);
+    pointer-events: none;
+    z-index: 3;
+    transition:
+        -webkit-mask-image 0.08s linear,
+                mask-image 0.08s linear,
+        opacity 0.2s ease;
 }
+
+
 
 /* ============================================================
    SEARCH
@@ -931,6 +971,8 @@ img { max-width: 100%; display: block; }
 }
 
 .paper-download i { font-size: 0.8rem; }
+
+.card-code { display: none; }
 
 /* ============================================================
    ANIMATIONS

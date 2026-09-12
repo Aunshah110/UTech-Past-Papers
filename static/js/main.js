@@ -226,3 +226,29 @@ document.addEventListener('DOMContentLoaded', () => {
     initSlideTitles();
     new CourseManager();
 });
+
+
+// ===== Circular cursor effect for hero titles =====
+
+document.querySelectorAll('.slide-title').forEach(title => {
+
+    title.addEventListener('mousemove', (e) => {
+
+        const rect = title.getBoundingClientRect();
+
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        title.style.setProperty('--cursor-x', `${x}px`);
+        title.style.setProperty('--cursor-y', `${y}px`);
+    });
+
+    title.addEventListener('mouseenter', () => {
+        title.style.setProperty('--cursor-opacity', '1');
+    });
+
+    title.addEventListener('mouseleave', () => {
+        title.style.setProperty('--cursor-opacity', '0');
+    });
+
+});
