@@ -10,9 +10,9 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
-import PyPDF2
 from groq import Groq
-import fitz, base64, PyPDF2
+import fitz 
+import base64, PyPDF2
 
 
 from pathlib import Path
