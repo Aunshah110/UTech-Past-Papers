@@ -1172,11 +1172,15 @@ def analyze_papers():
                 # Limit to first 2 pages per paper to stay within Vercel/Groq limits
                 for page_num in range(min(2, pdf_doc.page_count)):
                     page = pdf_doc[page_num]
-                    # Render page to image at 150 DPI
-                    pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
-                    img_bytes = pix.tobytes("jpeg")
+                    # Render at 72 DPI (not 150) to keep size down
+                    pix = page.get_pixmap(matrix=fitz.Matrix(72/72, 72/72)) # 72 DPI = 1:1
+                    img_bytes = pix.tobytes("jpeg", quality=70) # Compress harder
                     b64 = base64.b64encode(img_bytes).decode('utf-8')
                     image_contents.append(f"data:image/jpeg;base64,{b64}")
+
+                    # Cap at 2 images total to stay safe
+                    if len(image_contents) >= 2:
+                        break
                 
                 pdf_doc.close()
             except Exception as e:
@@ -1222,7 +1226,7 @@ def analyze_papers():
         return jsonify({'prediction': prediction})
 
     except Exception as e:
-        print(f"Chatbot analysis error: {e}")
+        print(f"[CHATBOT ERROR] {type(e).__name__}: {e}") # Logs to Vercel
         return jsonify({'error': 'Analysis failed. Please try again.'}), 500
         
 if __name__ == '__main__':
