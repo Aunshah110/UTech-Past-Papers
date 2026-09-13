@@ -1315,7 +1315,7 @@ def analyze_papers():
     predict likely exam questions, and return a structured response.
     """
     try:
-        data = request.get_json() or {}
+        data = request.get_json() or {} 
         course_code = (data.get('course_code') or '').strip().upper()
         exam_type   = (data.get('exam_type')   or '').strip()
         paper_ids   = data.get('paper_ids') or []
@@ -1447,16 +1447,8 @@ def analyze_papers():
             except Exception as e:
                 err = str(e)
                 last_error = err
-
-                if "429" in err or "rate_limit" in err.lower():
-                    # Extract the retry-after value from Groq's message
-                    m = re.search(r"try again in ([\d.]+)s", err)
-                    wait = float(m.group(1)) if m else 10
-                    wait = max(wait, 5)   # never less than 5s
-                    print(f"[chatbot] rate limited, retrying in {wait}s...")
-                    time.sleep(wait)
-                else:
-                    break
+                print(f"[groq call attempt {attempt+1}] {type(e).__name__}: {err}")   # <-- ADD THIS
+                ...
                 
         if not prediction:
             # Distinguish rate-limit failures from real errors
