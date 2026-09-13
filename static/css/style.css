@@ -1677,3 +1677,198 @@ img { max-width: 100%; display: block; }
         transition: none !important;
     }
 }
+
+/* ============================================================
+   CHAT BUBBLE — Markdown output styling
+   Applied to .chat-bubble-content.prediction
+   ============================================================ */
+
+.chat-bubble-content.prediction {
+    white-space: normal;   /* let HTML handle spacing */
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: var(--brown-900, #3b220c);
+    max-height: 480px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.chat-bubble-content.prediction::-webkit-scrollbar { width: 5px; }
+.chat-bubble-content.prediction::-webkit-scrollbar-thumb {
+    background: rgba(90, 54, 32, 0.25);
+    border-radius: 3px;
+}
+
+/* ---------- Headings ---------- */
+.chat-bubble-content.prediction h1,
+.chat-bubble-content.prediction h2,
+.chat-bubble-content.prediction h3,
+.chat-bubble-content.prediction h4 {
+    color: var(--brown-800, #512404);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 0.9rem 0 0.5rem;
+}
+
+.chat-bubble-content.prediction h1 { font-size: 1.05rem; }
+.chat-bubble-content.prediction h2 { font-size: 0.98rem; }
+.chat-bubble-content.prediction h3 { font-size: 0.92rem; }
+.chat-bubble-content.prediction h4 { font-size: 0.88rem; }
+
+.chat-bubble-content.prediction h1:first-child,
+.chat-bubble-content.prediction h2:first-child,
+.chat-bubble-content.prediction h3:first-child {
+    margin-top: 0;
+}
+
+/* ---------- Paragraphs ---------- */
+.chat-bubble-content.prediction p {
+    margin: 0.5rem 0;
+}
+
+.chat-bubble-content.prediction p:first-child { margin-top: 0; }
+.chat-bubble-content.prediction p:last-child  { margin-bottom: 0; }
+
+/* ---------- Bold + emphasis ---------- */
+.chat-bubble-content.prediction strong {
+    color: var(--brown-800, #512404);
+    font-weight: 700;
+}
+
+.chat-bubble-content.prediction em {
+    font-style: italic;
+    color: var(--brown-700, #5a3620);
+}
+
+/* ---------- Lists ---------- */
+.chat-bubble-content.prediction ul,
+.chat-bubble-content.prediction ol {
+    margin: 0.5rem 0 0.5rem 1.1rem;
+    padding-left: 0.4rem;
+}
+
+.chat-bubble-content.prediction li {
+    margin: 0.35rem 0;
+    padding-left: 0.2rem;
+}
+
+.chat-bubble-content.prediction ul li::marker { color: var(--brown-600, #704023); }
+.chat-bubble-content.prediction ol li::marker {
+    color: var(--brown-600, #704023);
+    font-weight: 700;
+}
+
+/* Nested lists get a little tighter spacing */
+.chat-bubble-content.prediction ul ul,
+.chat-bubble-content.prediction ol ol,
+.chat-bubble-content.prediction ul ol,
+.chat-bubble-content.prediction ol ul {
+    margin: 0.25rem 0 0.25rem 0.9rem;
+}
+
+/* ---------- Tables ---------- */
+.chat-bubble-content.prediction table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.7rem 0;
+    font-size: 0.82rem;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(90, 54, 32, 0.15);
+}
+
+.chat-bubble-content.prediction thead th {
+    background: linear-gradient(90deg, #5a3620, #704023);
+    color: #fff;
+    text-align: left;
+    font-weight: 700;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+.chat-bubble-content.prediction tbody td {
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid rgba(90, 54, 32, 0.1);
+    color: var(--brown-800, #512404);
+    vertical-align: top;
+    line-height: 1.5;
+}
+
+.chat-bubble-content.prediction tbody tr:last-child td { border-bottom: none; }
+
+.chat-bubble-content.prediction tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- Horizontal rules ---------- */
+.chat-bubble-content.prediction hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(90, 54, 32, 0.3), transparent);
+    margin: 0.9rem 0;
+}
+
+/* ---------- Blockquotes (used for the *All appeared...* line) ---------- */
+.chat-bubble-content.prediction blockquote {
+    border-left: 3px solid var(--brown-600, #704023);
+    background: rgba(255, 218, 121, 0.25);
+    padding: 0.55rem 0.85rem;
+    margin: 0.7rem 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.82rem;
+    color: var(--brown-800, #512404);
+    font-style: italic;
+}
+
+.chat-bubble-content.prediction blockquote p { margin: 0; }
+
+/* ---------- Inline code (rare in predictions, but safe) ---------- */
+.chat-bubble-content.prediction code {
+    background: rgba(90, 54, 32, 0.1);
+    color: var(--brown-900, #3b220c);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ---------- Links ---------- */
+.chat-bubble-content.prediction a {
+    color: var(--brown-600, #704023);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.chat-bubble-content.prediction a:hover {
+    color: var(--brown-800, #512404);
+}
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 520px) {
+    .chat-bubble-content.prediction {
+        font-size: 0.84rem;
+        max-height: 380px;
+    }
+
+    .chat-bubble-content.prediction table {
+        font-size: 0.76rem;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .chat-bubble-content.prediction thead th {
+        font-size: 0.72rem;
+        padding: 0.45rem 0.55rem;
+    }
+
+    .chat-bubble-content.prediction tbody td {
+        padding: 0.5rem 0.55rem;
+    }
+}
+
+

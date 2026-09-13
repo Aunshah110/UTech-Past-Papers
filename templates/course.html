@@ -7,6 +7,8 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
 </head>
 <body>
 
@@ -42,7 +44,7 @@
 
     <header class="hero-titles">
         <h1 class="slide-title" data-text="Course Resources">Course Resources</h1>
-        <h2 class="slide-title sub" data-text="Past Papers &amp; Notes">Past Papers &amp; Notes</h2>
+        <!-- <h2 class="slide-title sub" data-text="Past Papers &amp; Notes">Past Papers &amp; Notes</h2> -->
     </header>
 
     <main class="courses-section">
@@ -455,7 +457,25 @@
                 chatTyping.classList.remove('visible');
                 if (result.ok && result.data.prediction) {
                     botBubble.classList.add('prediction');
-                    botBubble.textContent = result.data.prediction;
+                    // Render the Markdown the model returns into clean HTML.
+                    // If `marked` failed to load for any reason, fall back to plain text.
+                    let renderedHtml;
+                    try {
+                        const rawHtml = marked.parse(result.data.prediction, {
+                            breaks: true,        // single newlines become <br>
+                            gfm: true,           // tables, strikethrough, task lists
+                        });
+                        renderedHtml = DOMPurify.sanitize(rawHtml);
+                    } catch (err) {
+                        console.warn('Markdown render failed, falling back to text', err);
+                        renderedHtml = null;
+                    }
+
+                    if (renderedHtml) {
+                        botBubble.innerHTML = renderedHtml;
+                    } else {
+                        botBubble.textContent = result.data.prediction;
+}
                 } else {
                     botBubble.textContent = '⚠ ' +
                         (result.data.error || 'Analysis failed. Please try again.');

@@ -1132,7 +1132,7 @@ def get_course_papers(course_id):
 from groq import Groq
 
 GROQ_VISION_MODEL  = "qwen/qwen3.6-27b"
-GROQ_TEXT_MODEL    = "llama-3.3-70b-versatile"
+GROQ_TEXT_MODEL    = "openai/gpt-oss-120b"
 MAX_OCR_PAGES      = 2
 MAX_OCR_IMAGES     = 1
 TEXT_THRESHOLD     = 50   # chars per page — below this, treat as scanned
@@ -1403,10 +1403,14 @@ def analyze_papers():
             "question patterns provided, predict the questions most likely to "
             "appear in the NEXT exam. Follow these rules:\n"
             "1. Identify recurring topics and question styles.\n"
-            "2. Group predictions by mark value (5 marks, 10 marks, etc.).\n"
-            "3. For each prediction, cite how many past papers it appeared in.\n"
-            "4. If a topic appears in every paper, mark it as HIGH confidence.\n"
-            "5. Keep the output concise, well-formatted, and easy to read in a chat UI."
+            "2. Group predictions by mark value using Markdown H2 headings (##).\n"
+            "3. Present predicted questions in a Markdown table with columns: "
+            "#, Predicted Question, Past-paper occurrence.\n"
+            "4. Inside the 'Predicted Question' cell, bold the key concept using **bold**.\n"
+            "5. After each table, add a one-line blockquote (> ...) noting the confidence level.\n"
+            "6. Use bold for confidence labels (HIGH, MEDIUM, LOW).\n"
+            "7. Keep the output concise and scannable — this is rendered in a chat panel.\n"
+            "8. Never wrap the whole response in a code fence."
         )
 
         user_prompt = (
@@ -1419,20 +1423,47 @@ def analyze_papers():
             f"Use headings and bullet points. Be specific."
         )
 
-        try:
-            resp = _groq().chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                model=GROQ_TEXT_MODEL,
-                temperature=0.4,
-                max_completion_tokens=1400,
-                stream=False,
-            )
-            prediction = resp.choices[0].message.content or ""
-        except Exception as e:
-            print(f"[groq predict] {e}")
+        import time
+        # ... inside the route, replace the try/except around the Groq call ...
+
+        max_retries = 3
+        prediction = ""
+        last_error = ""
+
+        for attempt in range(max_retries):
+            try:
+                resp = _groq().chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": user_prompt},
+                    ],
+                    model=GROQ_TEXT_MODEL,
+                    temperature=0.4,
+                    max_completion_tokens=800,
+                    stream=False,
+                )
+                prediction = resp.choices[0].message.content or ""
+                break
+            except Exception as e:
+                err = str(e)
+                last_error = err
+
+                if "429" in err or "rate_limit" in err.lower():
+                    # Extract the retry-after value from Groq's message
+                    m = re.search(r"try again in ([\d.]+)s", err)
+                    wait = float(m.group(1)) if m else 10
+                    wait = max(wait, 5)   # never less than 5s
+                    print(f"[chatbot] rate limited, retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    break
+                
+        if not prediction:
+            # Distinguish rate-limit failures from real errors
+            if "429" in last_error or "rate_limit" in last_error.lower():
+                return jsonify({
+                    'error': 'AI is busy right now. Please wait a moment and try again.'
+                }), 429
             return jsonify({'error': 'AI service unavailable. Please try again.'}), 502
 
         # ---- 5. Cache the result ----
