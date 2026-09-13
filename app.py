@@ -1439,7 +1439,7 @@ def analyze_papers():
                     ],
                     model=GROQ_TEXT_MODEL,
                     temperature=0.4,
-                    max_completion_tokens=800,
+                    max_completion_tokens=600,
                     stream=False,
                 )
                 prediction = resp.choices[0].message.content or ""
