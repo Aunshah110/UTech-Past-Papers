@@ -1220,7 +1220,7 @@ def ocr_with_groq(images):
             messages=[{"role": "user", "content": content}],
             model=GROQ_VISION_MODEL,
             temperature=0.0,
-            max_completion_tokens=700,
+            max_tokens=600,  
             stream=False,
         )
         return resp.choices[0].message.content or ""
@@ -1439,7 +1439,7 @@ def analyze_papers():
                     ],
                     model=GROQ_TEXT_MODEL,
                     temperature=0.4,
-                    max_completion_tokens=800,
+                    max_completion_tokens=900,
                     stream=False,
                 )
                 prediction = resp.choices[0].message.content or ""
