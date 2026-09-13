@@ -11,4 +11,4 @@ psycopg2-binary
 httpx==0.27.0
 groq==0.9.0
 PyMuPDF==1.24.10
-pdf_oxide==0.1.0
+pdf_oxide[ocr]==0.3.76

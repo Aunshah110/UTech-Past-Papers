@@ -1,5 +1,6 @@
 import os, io
 import secrets
+from annotated_types import doc
 import psycopg2
 import psycopg2.extras
 from flask import Flask, render_template, request, jsonify, redirect, stream_with_context, url_for, session, flash, Response
@@ -11,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
 from groq import Groq
-from pdf_oxide import Pdf
+from pdf_oxide import PdfDocument
 import base64, tempfile
 
 
@@ -1169,10 +1170,8 @@ def analyze_papers():
                 response.raise_for_status()
                 
                 # pdf_oxide reads directly from bytes - no temp file needed
-                pdf = Pdf(response.content)
-                
-                # Extract text from up to 3 pages
-                text = pdf.extract_text(0, min(3, pdf.page_count))
+                doc = PdfDocument.from_bytes(response.content)
+                text = doc.extract_text(0)
                 
                 if text.strip():
                     extracted_texts.append(f"--- Paper Year: {paper['year']} ---\n{text}")
