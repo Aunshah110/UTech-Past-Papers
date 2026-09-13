@@ -1,4 +1,4 @@
-import os, io
+import os, io, re, json
 import secrets
 from annotated_types import doc
 import psycopg2
@@ -11,18 +11,14 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from functools import wraps
-from groq import Groq
-from pdf_oxide import PdfDocument
-import base64, tempfile
-
-
+import base64, hashlib, fitz
 from pathlib import Path
 
 app = Flask(__name__)
 CORS(app)
 
-# BASE_DIR = Path(__file__).resolve().parent
-# load_dotenv(BASE_DIR / ".env")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
@@ -1129,101 +1125,344 @@ def get_course_papers(course_id):
         return jsonify({'error': str(e)}), 500
 
 
-# Initialize Groq client (outside the route for reuse)
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# ============================================================
+# AI CHATBOT — SHARED HELPERS
+# ============================================================
+
+from groq import Groq
+
+GROQ_VISION_MODEL  = "qwen/qwen3.6-27b"
+GROQ_TEXT_MODEL    = "llama-3.3-70b-versatile"
+MAX_OCR_PAGES      = 2
+MAX_OCR_IMAGES     = 1
+TEXT_THRESHOLD     = 50   # chars per page — below this, treat as scanned
+
+def _groq():
+    """Lazy-init the Groq client so env vars are always loaded first."""
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is not set in .env")
+    return Groq(api_key=api_key)
+
+
+def extract_pdf_text(pdf_bytes):
+    """
+    Returns (mode, text, page_images).
+    mode = 'text' if a real text layer exists, else 'ocr'.
+    page_images = list of base64 data-URLs (only populated when mode='ocr').
+    """
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as e:
+        return ("ocr", "", [])
+
+    total_chars = 0
+    collected = []
+    page_count = min(doc.page_count, MAX_OCR_PAGES)
+
+    for i in range(doc.page_count):
+        page = doc[i]
+        text = page.get_text("text") or ""
+        collected.append(text)
+        total_chars += len(text.strip())
+
+    avg = total_chars / max(doc.page_count, 1)
+    doc.close()
+
+    if avg >= TEXT_THRESHOLD:
+        return ("text", "\n".join(collected).strip(), [])
+
+    # ---- OCR path ----
+    images = _pdf_to_images(pdf_bytes, page_count)
+    return ("ocr", "", images)
+
+def _pdf_to_images(pdf_bytes, limit):
+    """Render first `limit` pages of a PDF as base64 JPEG data URLs."""
+    images = []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for i in range(min(limit, doc.page_count)):
+            page = doc[i]
+            # Render at 60% scale instead of 1:1
+            pix = page.get_pixmap(matrix=fitz.Matrix(0.6, 0.6))
+
+            # Try the modern API first, fall back to the plain call
+            try:
+                img = pix.tobytes("jpeg", jpg_quality=70)
+            except TypeError:
+                img = pix.tobytes("jpeg")
+
+            b64 = base64.b64encode(img).decode("ascii")
+            images.append(f"data:image/jpeg;base64,{b64}")
+        doc.close()
+    except Exception as e:
+        print(f"[pdf_to_images] {e}")
+    return images[:MAX_OCR_IMAGES]
+
+def ocr_with_groq(images):
+    """Run Groq's vision model over images and return the extracted text."""
+    if not images:
+        return ""
+    try:
+        content = [{
+            "type": "text",
+            "text": (
+                "You are an OCR engine. Transcribe every word from these "
+                "exam-paper page images EXACTLY as written, preserving question "
+                "numbers, marks, and line breaks. Do not summarize. Do not add "
+                "commentary. Return only the transcribed text."
+            )
+        }]
+        for img in images:
+            content.append({"type": "image_url", "image_url": {"url": img}})
+
+        resp = _groq().chat.completions.create(
+            messages=[{"role": "user", "content": content}],
+            model=GROQ_VISION_MODEL,
+            temperature=0.0,
+            max_completion_tokens=500,
+            stream=False,
+        )
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        print(f"[ocr_with_groq] {e}")
+        return ""
+
+
+# ---- Question segmentation ----
+QUESTION_RE = re.compile(
+    r"(?m)^\s*(?:Q(?:uestion)?\s*\.?\s*(\d{1,2})|(\d{1,2})\s*[\.\)])\s+(.*?)$"
+)
+MARKS_RE = re.compile(
+    r"[\[\(]?\s*(\d{1,2})\s*(?:marks?|Marks?|M)\s*[\]\)]?"
+)
+
+
+def segment_questions(raw_text):
+    """
+    Split raw text into a list of {text, marks} dicts.
+    Returns [] if nothing usable was found.
+    """
+    if not raw_text or len(raw_text) < 40:
+        return []
+
+    cleaned = _clean_ocr(raw_text)
+    lines = cleaned.splitlines()
+
+    questions = []
+    current = []
+
+    for line in lines:
+        if QUESTION_RE.match(line):
+            if current:
+                q = _finalize_question("\n".join(current))
+                if q:
+                    questions.append(q)
+            current = [line]
+        else:
+            if current:
+                current.append(line)
+
+    if current:
+        q = _finalize_question("\n".join(current))
+        if q:
+            questions.append(q)
+
+    # Fallback: if no numbered questions were found but text is long, split on blank lines
+    if not questions:
+        chunks = [c.strip() for c in re.split(r"\n\s*\n", cleaned) if len(c.strip()) > 30]
+        for c in chunks:
+            q = _finalize_question(c)
+            if q:
+                questions.append(q)
+
+    return questions[:80]   # cap so a huge PDF can't bloat the DB
+
+
+def _clean_ocr(text):
+    """Fix common OCR artifacts and normalize whitespace."""
+    t = text
+    t = t.replace("\u00a0", " ")
+    t = re.sub(r"\r\n?", "\n", t)
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
+def _finalize_question(block):
+    text = block.strip()
+    if len(text) < 15:
+        return None
+    marks = None
+    m = MARKS_RE.search(text)
+    if m:
+        try:
+            marks = int(m.group(1))
+        except ValueError:
+            marks = None
+    return {"text": text, "marks": marks}
+
+
+def make_cache_key(course_code, exam_type, paper_ids):
+    raw = f"{course_code}|{exam_type}|{sorted(paper_ids)}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 @app.route('/api/chat/analyze', methods=['POST'])
 def analyze_papers():
-    """Analyze scanned PDFs by rendering pages as images for Groq Vision."""
+    """
+    Read pre-extracted questions for the selected papers, ask Groq to
+    predict likely exam questions, and return a structured response.
+    """
     try:
         data = request.get_json() or {}
-        course_code = data.get('course_code')
-        exam_type = data.get('exam_type')
-        paper_ids = data.get('paper_ids', [])
+        course_code = (data.get('course_code') or '').strip().upper()
+        exam_type   = (data.get('exam_type')   or '').strip()
+        paper_ids   = data.get('paper_ids') or []
 
-        if not paper_ids:
-            return jsonify({'error': 'No papers selected for analysis'}), 400
+        if not course_code or not exam_type or not paper_ids:
+            return jsonify({'error': 'Missing course, exam type, or paper selection'}), 400
 
-        # 1. Fetch the PDF URLs from your database
+        if exam_type not in ('Mid', 'Final', 'Notes'):
+            return jsonify({'error': 'Invalid exam type'}), 400
+
+        # ---- 0. Cache hit? ----
+        key = make_cache_key(course_code, exam_type, paper_ids)
+
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
-
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        cur.execute("SELECT prediction FROM prediction_cache WHERE cache_key = %s", (key,))
+        hit = cur.fetchone()
+        if hit:
+            cur.execute("UPDATE prediction_cache SET hits = hits + 1 WHERE cache_key = %s", (key,))
+            conn.commit()
+            cur.close(); conn.close()
+            return jsonify({'prediction': hit['prediction'], 'cached': True})
+
+        # ---- 1. Pull questions for the selected years ----
         cur.execute("""
-            SELECT id, pdf_url, year FROM courses 
-            WHERE id = ANY(%s) AND course_code = %s
-        """, (paper_ids, course_code))
-        papers = cur.fetchall()
+            SELECT year, question_text, marks
+            FROM paper_questions
+            WHERE course_code = %s
+              AND exam_type   = %s
+              AND source_paper_id = ANY(%s)
+            ORDER BY year DESC, marks DESC NULLS LAST
+        """, (course_code, exam_type, paper_ids))
+
+        rows = cur.fetchall()
+
+        if not rows:
+            cur.close(); conn.close()
+            return jsonify({
+                'error': (
+                    'Questions for these papers have not been extracted yet. '
+                    'Please ask the administrator to run the backfill for this course.'
+                )
+            }), 400
+
+        # ---- 2. Frequency analysis (topic repetition) ----
+        cur.execute("""
+            SELECT marks, COUNT(*) AS c
+            FROM paper_questions
+            WHERE course_code = %s AND exam_type = %s AND source_paper_id = ANY(%s)
+            GROUP BY marks
+            ORDER BY marks DESC NULLS LAST
+        """, (course_code, exam_type, paper_ids))
+        mark_dist = [dict(r) for r in cur.fetchall()]
+
         cur.close()
         conn.close()
 
-        if not papers:
-            return jsonify({'error': 'No matching papers found'}), 404
-
-        # 2. Render PDF pages to images
-        image_contents = []
-        for paper in papers:
-            try:
-                response = requests.get(paper['pdf_url'], timeout=15)
-                response.raise_for_status()
-
-                # Load PDF from bytes with pdf_oxide
-                pdf = Pdf(response.content)
-
-                # Render first 2 pages as JPEG images
-                for page_num in range(min(2, pdf.page_count)):
-                    # Render at moderate resolution to keep size under limits
-                    image_bytes = pdf.render_page_to_jpeg(page_num, dpi=100, quality=75)
-                    b64 = base64.b64encode(image_bytes).decode('utf-8')
-                    image_contents.append(f"data:image/jpeg;base64,{b64}")
-
-            except Exception as e:
-                print(f"[PDF ERROR] Paper {paper['id']}: {e}")
-                continue
-
-        if not image_contents:
-            return jsonify({'error': 'Could not render selected PDFs to images'}), 400
-
-        # Groq limit: max 5 images per request. Truncate if needed.
-        image_contents = image_contents[:5]
-
-        # 3. Build the message with images for Groq Vision
-        user_content = [
-            {
-                "type": "text",
-                "text": f"Analyze these past {exam_type} exam papers for {course_code}. "
-                        f"Based on the patterns, topics, and mark distribution you see in these images, "
-                        f"predict the most likely questions that will appear in the upcoming exam. "
-                        f"Format your response as a structured list grouped by mark value."
-            }
-        ]
-        
-        for img_data in image_contents:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": img_data}
+        # ---- 3. Build structured context for Groq ----
+        by_year = {}
+        for r in rows:
+            by_year.setdefault(r['year'], []).append({
+                "q": r['question_text'],
+                "m": r['marks'],
             })
 
-        # 4. Call Groq's vision model
-        chat_completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You are an expert university examiner. Read the provided exam paper images and predict likely exam questions."},
-                {"role": "user", "content": user_content}
-            ],
-            model="qwen/qwen3.6-27b",  # Vision-capable model
-            temperature=0.5,
-            max_completion_tokens=1024,
-            stream=False
+        context_lines = []
+        for year in sorted(by_year.keys(), reverse=True):
+            context_lines.append(f"\n--- {year} {exam_type} ---")
+            for item in by_year[year]:
+                m = f" [{item['m']} marks]" if item['m'] else ""
+                context_lines.append(f"- {item['q']}{m}")
+        context = "\n".join(context_lines)
+
+        mark_summary = ", ".join(
+            f"{d['marks']} marks × {d['c']}" if d['marks'] else f"unmarked × {d['c']}"
+            for d in mark_dist
         )
 
-        prediction = chat_completion.choices[0].message.content
-        return jsonify({'prediction': prediction})
+        # ---- 4. Ask Groq (text model, no vision needed) ----
+        system_prompt = (
+            "You are a senior university examiner. Based on the historical "
+            "question patterns provided, predict the questions most likely to "
+            "appear in the NEXT exam. Follow these rules:\n"
+            "1. Identify recurring topics and question styles.\n"
+            "2. Group predictions by mark value (5 marks, 10 marks, etc.).\n"
+            "3. For each prediction, cite how many past papers it appeared in.\n"
+            "4. If a topic appears in every paper, mark it as HIGH confidence.\n"
+            "5. Keep the output concise, well-formatted, and easy to read in a chat UI."
+        )
+
+        user_prompt = (
+            f"Course: {course_code}\n"
+            f"Exam type: {exam_type}\n"
+            f"Papers analyzed: {len(by_year)} year(s)\n"
+            f"Mark distribution: {mark_summary}\n\n"
+            f"Historical questions:\n{context}\n\n"
+            f"Predict the most likely questions for the upcoming {exam_type} exam. "
+            f"Use headings and bullet points. Be specific."
+        )
+
+        try:
+            resp = _groq().chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                model=GROQ_TEXT_MODEL,
+                temperature=0.4,
+                max_completion_tokens=1400,
+                stream=False,
+            )
+            prediction = resp.choices[0].message.content or ""
+        except Exception as e:
+            print(f"[groq predict] {e}")
+            return jsonify({'error': 'AI service unavailable. Please try again.'}), 502
+
+        # ---- 5. Cache the result ----
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO prediction_cache (cache_key, prediction)
+                VALUES (%s, %s)
+                ON CONFLICT (cache_key) DO UPDATE
+                    SET prediction = EXCLUDED.prediction,
+                        generated_at = CURRENT_TIMESTAMP
+            """, (key, prediction))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"[cache write] {e}")
+
+        return jsonify({
+            'prediction': prediction,
+            'cached': False,
+            'papers_used': len(by_year),
+            'questions_used': len(rows),
+        })
 
     except Exception as e:
         print(f"[CHATBOT ERROR] {type(e).__name__}: {e}")
         return jsonify({'error': 'Analysis failed. Please try again.'}), 500
+
         
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
