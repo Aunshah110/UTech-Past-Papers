@@ -1135,7 +1135,7 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 @app.route('/api/chat/analyze', methods=['POST'])
 def analyze_papers():
-    """Analyze scanned PDFs using pdf_oxide's built-in OCR."""
+    """Analyze scanned PDFs by rendering pages as images for Groq Vision."""
     try:
         data = request.get_json() or {}
         course_code = data.get('course_code')
@@ -1162,47 +1162,57 @@ def analyze_papers():
         if not papers:
             return jsonify({'error': 'No matching papers found'}), 404
 
-        # 2. Extract text from PDFs using pdf_oxide (handles both text and scanned)
-        extracted_texts = []
+        # 2. Render PDF pages to images
+        image_contents = []
         for paper in papers:
             try:
                 response = requests.get(paper['pdf_url'], timeout=15)
                 response.raise_for_status()
-                
-                # pdf_oxide reads directly from bytes - no temp file needed
-                doc = PdfDocument.from_bytes(response.content)
-                text = doc.extract_text(0)
-                
-                if text.strip():
-                    extracted_texts.append(f"--- Paper Year: {paper['year']} ---\n{text}")
-                    
+
+                # Load PDF from bytes with pdf_oxide
+                pdf = Pdf(response.content)
+
+                # Render first 2 pages as JPEG images
+                for page_num in range(min(2, pdf.page_count)):
+                    # Render at moderate resolution to keep size under limits
+                    image_bytes = pdf.render_page_to_jpeg(page_num, dpi=100, quality=75)
+                    b64 = base64.b64encode(image_bytes).decode('utf-8')
+                    image_contents.append(f"data:image/jpeg;base64,{b64}")
+
             except Exception as e:
                 print(f"[PDF ERROR] Paper {paper['id']}: {e}")
                 continue
 
-        if not extracted_texts:
-            return jsonify({'error': 'Could not extract text from the selected PDFs'}), 400
+        if not image_contents:
+            return jsonify({'error': 'Could not render selected PDFs to images'}), 400
 
-        # 3. Combine and truncate text
-        combined_text = "\n\n".join(extracted_texts)
-        max_chars = 12000
-        if len(combined_text) > max_chars:
-            combined_text = combined_text[:max_chars] + "\n\n[... Content Truncated ...]"
+        # Groq limit: max 5 images per request. Truncate if needed.
+        image_contents = image_contents[:5]
 
-        # 4. Call Groq (text-based, no vision needed)
-        system_prompt = f"""You are an expert university examiner. 
-        Analyze the provided past exam papers for {course_code} ({exam_type}). 
-        Based on the patterns, topics, and mark distribution, predict the most likely questions 
-        that will appear in the upcoming exam. Format as a structured list."""
+        # 3. Build the message with images for Groq Vision
+        user_content = [
+            {
+                "type": "text",
+                "text": f"Analyze these past {exam_type} exam papers for {course_code}. "
+                        f"Based on the patterns, topics, and mark distribution you see in these images, "
+                        f"predict the most likely questions that will appear in the upcoming exam. "
+                        f"Format your response as a structured list grouped by mark value."
+            }
+        ]
+        
+        for img_data in image_contents:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": img_data}
+            })
 
-        user_prompt = f"Here are the past {exam_type} papers:\n\n{combined_text}\n\nWhat questions are most likely to appear?"
-
+        # 4. Call Groq's vision model
         chat_completion = groq_client.chat.completions.create(
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": "You are an expert university examiner. Read the provided exam paper images and predict likely exam questions."},
+                {"role": "user", "content": user_content}
             ],
-            model="llama-3.3-70b-versatile",
+            model="qwen/qwen3.6-27b",  # Vision-capable model
             temperature=0.5,
             max_completion_tokens=1024,
             stream=False
