@@ -634,21 +634,25 @@ def search_courses():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+
 @app.route('/api/admin/upload', methods=['POST'])
 @login_required
 def upload_course():
     """
-    Upload a paper. If the course code already exists, only the new paper
-    row is inserted (the card on the homepage automatically groups by code).
+    Upload a paper. Multiple papers with the same
+    (course_code, exam_type, year) are allowed as long as the
+    PDF content differs. Identical files are rejected.
     """
     conn = None
     try:
         # ---------- 1. Read & validate form fields ----------
-        course_name  = (request.form.get('course_name')  or '').strip()
-        course_code  = (request.form.get('course_code')  or '').strip().upper()
-        description  = (request.form.get('description')  or '').strip()
-        exam_type    = (request.form.get('exam_type')    or '').strip()
-        year_raw     = (request.form.get('year')         or '').strip()
+        course_name   = (request.form.get('course_name')  or '').strip()
+        course_code   = (request.form.get('course_code')  or '').strip().upper()
+        description   = (request.form.get('description')  or '').strip()
+        exam_type     = (request.form.get('exam_type')    or '').strip()
+        year_raw      = (request.form.get('year')         or '').strip()
+        paper_label   = (request.form.get('paper_label')  or '').strip()  # NEW (optional)
 
         if not all([course_name, course_code, exam_type, year_raw]):
             return jsonify({'error': 'Missing required fields'}), 400
@@ -676,7 +680,14 @@ def upload_course():
         if not filename.lower().endswith('.pdf'):
             return jsonify({'error': 'Only PDF files are allowed'}), 400
 
-        # ---------- 3. Open DB connection early (needed for the lookup) ----------
+        # ---- NEW: read file bytes ONCE and hash them ----
+        file_content = pdf_file.read()
+        if not file_content:
+            return jsonify({'error': 'Uploaded file is empty'}), 400
+
+        paper_hash = hashlib.sha256(file_content).hexdigest()
+
+        # ---------- 3. Open DB connection ----------
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Database connection failed'}), 500
@@ -696,43 +707,44 @@ def upload_course():
         is_new_course = existing is None
 
         if is_new_course:
-            # A brand new course — use what the admin typed
             final_name        = course_name
             final_description = description
         else:
-            # Course already exists — keep its canonical name/description.
-            # If the admin typed a new description, adopt it (optional update).
             final_name        = existing['course_name']
             final_description = description or existing['description']
 
-        # ---------- 5. Prevent duplicate (code + type + year) ----------
+        # ---------- 5. NEW: duplicate detection by CONTENT HASH ----------
         cur.execute("""
             SELECT id FROM courses
             WHERE UPPER(course_code) = %s
               AND exam_type = %s
               AND year = %s
-        """, (course_code, exam_type, year))
+              AND paper_hash = %s
+        """, (course_code, exam_type, year, paper_hash))
 
         if cur.fetchone():
             cur.close()
             conn.close()
             return jsonify({
                 'error': (
-                    f'{course_code} already has a {exam_type} paper '
-                    f'for {year}. Delete it first if you want to re-upload.'
+                    f'This exact file is already uploaded for '
+                    f'{course_code} {exam_type} {year}. '
+                    f'If it is a different paper, verify the file and try again.'
                 )
             }), 409
 
         # ---------- 6. Upload PDF to Vercel Blob ----------
         try:
-            file_content = pdf_file.read()
             safe_original = secure_filename(pdf_file.filename) or "paper.pdf"
 
-            # No timestamp — URL ends with the exact original name.
-            # Uniqueness comes from the DB (course_code + exam_type + year).
+            # Add a short slice of the content hash so two different 2023 Mid
+            # papers get distinct blob paths.
+            short_hash = paper_hash[:8]
+
             blob_pathname = (
                 f"courses/{course_code}/"
                 f"{exam_type.lower()}_{year}_"
+                f"{short_hash}_"
                 f"{safe_original}"
             )
 
@@ -746,8 +758,9 @@ def upload_course():
         try:
             cur.execute("""
                 INSERT INTO courses
-                    (course_name, course_code, description, exam_type, year, pdf_url)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (course_name, course_code, description, exam_type, year,
+                     pdf_url, pdf_filename, paper_hash, paper_label)   -- NEW
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)            -- NEW
                 RETURNING id
             """, (
                 final_name,
@@ -756,15 +769,18 @@ def upload_course():
                 exam_type,
                 year,
                 pdf_url,
+                filename,          # original filename (already used elsewhere)
+                paper_hash,        # NEW
+                paper_label or None,  # NEW (nullable)
             ))
             new_paper_id = cur.fetchone()['id']
             conn.commit()
-        except psycopg2.IntegrityError as ie:
+        except psycopg2.IntegrityError:
             conn.rollback()
             cur.close()
             conn.close()
             return jsonify({
-                'error': 'A matching paper already exists (code + type + year).'
+                'error': 'This exact paper already exists (identical content).'
             }), 409
         except Exception as e:
             conn.rollback()
@@ -779,20 +795,33 @@ def upload_course():
         )
         total_papers = cur.fetchone()['total']
 
+        # ---------- 8b. Count same-year-same-type papers ----------
+        cur.execute("""
+            SELECT COUNT(*) AS c
+            FROM courses
+            WHERE UPPER(course_code) = %s AND exam_type = %s AND year = %s
+        """, (course_code, exam_type, year))
+        same_year_count = cur.fetchone()['c']
+
         cur.close()
         conn.close()
 
         # ---------- 9. Friendly response ----------
+        suffix = ""
+        if same_year_count > 1:
+            suffix = (f' This is paper #{same_year_count} for '
+                      f'{exam_type} {year}.')
+
         if is_new_course:
             message = (
                 f'New course {course_code} created with its first '
-                f'{exam_type} paper ({year}).'
+                f'{exam_type} paper ({year}).{suffix}'
             )
         else:
             message = (
                 f'Added {exam_type} paper ({year}) to {course_code}. '
                 f'This course now has {total_papers} paper'
-                f'{"" if total_papers == 1 else "s"}.'
+                f'{"" if total_papers == 1 else "s"}.{suffix}'
             )
 
         return jsonify({
@@ -801,6 +830,7 @@ def upload_course():
             'course_code': course_code,
             'is_new_course': is_new_course,
             'total_papers': total_papers,
+            'same_year_count': same_year_count,
         }), 201
 
     except Exception as e:
@@ -1220,7 +1250,7 @@ def ocr_with_groq(images):
             messages=[{"role": "user", "content": content}],
             model=GROQ_VISION_MODEL,
             temperature=0.0,
-            max_completion_tokens=700,
+            max_completion_tokens=500,
             stream=False,
         )
         return resp.choices[0].message.content or ""
@@ -1439,7 +1469,7 @@ def analyze_papers():
                     ],
                     model=GROQ_TEXT_MODEL,
                     temperature=0.4,
-                    max_tokens=600,
+                    max_tokens=800,
                     stream=False,
                 )
                 prediction = resp.choices[0].message.content or ""
