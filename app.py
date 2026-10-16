@@ -1161,7 +1161,7 @@ def get_course_papers(course_id):
 
 from groq import Groq
 
-GROQ_VISION_MODEL  = "qwen/qwen3.6-27b"
+GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
 GROQ_TEXT_MODEL    = "openai/gpt-oss-120b"
 MAX_OCR_PAGES      = 2
 MAX_OCR_IMAGES     = 1
@@ -1250,7 +1250,7 @@ def ocr_with_groq(images):
             messages=[{"role": "user", "content": content}],
             model=GROQ_VISION_MODEL,
             temperature=0.0,
-            max_completion_tokens=500,
+            max_completion_tokens=600,
             stream=False,
         )
         return resp.choices[0].message.content or ""
