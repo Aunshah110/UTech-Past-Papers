@@ -431,7 +431,6 @@ img { max-width: 100%; display: block; }
         inset 0 1px 0 var(--glass-highlight),
         inset 0 -1px 0 rgba(255, 255, 255, 0.25);
     transition: var(--t);
-    opacity: 0;
     animation: cardIn 0.5s ease forwards;
     overflow: hidden;
 }
@@ -489,6 +488,8 @@ img { max-width: 100%; display: block; }
     line-height: 1.5;
     opacity: 0.92;
     display: -webkit-box;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     margin-bottom: 1rem;
@@ -1116,7 +1117,11 @@ img { max-width: 100%; display: block; }
 
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
-    .course-card,
+    .course-card{
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;   /* ← ensure visibility */
+    }
     .slide-title::before,
     .search-wrap,
     .nav-name,

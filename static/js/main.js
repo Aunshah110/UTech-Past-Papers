@@ -38,7 +38,7 @@ function initSlideTitles() {
 class CourseManager {
     constructor() {
         this.page = 1;
-        this.limit = 20;
+        this.limit = 15;
         this.totalPages = 0;
         this.searchQuery = '';
         this.isSearching = false;
@@ -74,6 +74,7 @@ class CourseManager {
         });
 
         this.loadMoreBtn.addEventListener('click', () => {
+            if (this.loadMoreBtn.disabled) return; 
             this.page++;
             this.loadCourses(false);
         });
@@ -87,7 +88,14 @@ class CourseManager {
             this.loadMoreWrap.style.display = 'none';
         }
 
-        this.setLoading(true);
+        // NEW: show spinner state on the Load More button itself
+        if (!reset && this.loadMoreBtn) {
+            this.loadMoreBtn.disabled = true;
+            this.loadMoreBtn.dataset.original = this.loadMoreBtn.textContent;
+            this.loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
+        }
+
+        this.setLoading(reset);   // full-page spinner only on first load / search reset
 
         try {
             const res = await fetch(`/api/courses/grouped?page=${this.page}&limit=${this.limit}`);
@@ -105,6 +113,13 @@ class CourseManager {
             this.showError('Could not load courses. Please try again.');
         } finally {
             this.setLoading(false);
+
+            // NEW: restore the Load More button
+            if (this.loadMoreBtn && this.loadMoreBtn.disabled) {
+                this.loadMoreBtn.disabled = false;
+                this.loadMoreBtn.textContent =
+                    this.loadMoreBtn.dataset.original || 'Load More';
+            }
         }
     }
 
@@ -152,7 +167,7 @@ class CourseManager {
     buildCard(course, index) {
         const el = document.createElement('article');
         el.className = 'course-card';
-        el.style.animationDelay = `${Math.min(index * 40, 400)}ms`;
+        el.style.animationDelay = `${Math.min(index * 25, 200)}ms`;
         
         const name  = this.esc(course.course_name || 'Untitled Course');
         const code  = this.esc(course.course_code || '—');
