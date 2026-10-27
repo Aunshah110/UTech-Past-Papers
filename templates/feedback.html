@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback — UTech Past Papers</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    
+    <style>
+        /* Local styles for the form layout */
+        .feedback-card {
+            background: var(--glass-bg-strong);
+            backdrop-filter: blur(20px) saturate(1.4);
+            -webkit-backdrop-filter: blur(20px) saturate(1.4);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 2.5rem;
+            max-width: 700px;
+            margin: 2rem auto;
+            box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+            position: relative;
+        }
+        .feedback-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, rgba(90,54,32,0.55), rgba(255,218,121,0.85), rgba(90,54,32,0.55));
+        }
+        .feedback-title {
+            font-size: 1.8rem;
+            color: var(--brown-800);
+            margin-bottom: 0.5rem;
+            font-weight: 800;
+        }
+        .feedback-desc {
+            color: var(--brown-700);
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.4rem;
+            color: var(--brown-800);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .required-star {
+            color: #d9534f;
+            margin-left: 2px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid rgba(90, 54, 32, 0.15);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.6);
+            color: var(--brown-900);
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: var(--t);
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--brown-600);
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 3px rgba(112, 64, 35, 0.12);
+        }
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
+        }
+        .rating-scale {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            border: 1px solid var(--glass-border-soft);
+        }
+        .rating-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .rating-options label {
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--brown-700);
+        }
+        .rating-options input[type="radio"] {
+            accent-color: var(--brown-600);
+            margin-bottom: 4px;
+            transform: scale(1.2);
+        }
+        .btn-submit {
+            background: var(--btn-grad);
+            color: #fff;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 999px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 60%;
+            margin-top: 1rem;
+            transition: var(--t);
+            box-shadow: 0 6px 14px rgba(90, 54, 32, 0.28);
+        }
+        .btn-submit:hover {
+            background: var(--btn-grad-hov);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 22px rgba(90, 54, 32, 0.4);
+        }
+        .btn-submit:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .submit-wrap {
+            display: flex;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        /* Dynamic Success Message Overlay */
+        .success-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(59, 34, 12, 0.6);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            flex-direction: column;
+            color: #fff;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .success-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+        .success-icon {
+            font-size: 4rem;
+            color: var(--amber);
+            margin-bottom: 1rem;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        .success-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="page-bg"></div>
+
+    <!-- Reuse the main Navbar Structure -->
+    <nav class="navbar">
+        <div class="nav-inner">
+            <div class="nav-brand">
+                <div class="brand-logo">
+                    <a href="/"><img src="{{ url_for('static', filename='images/uni_logo.png') }}" alt="University Logo"></a>
+                </div>
+                <a href="/" style="text-decoration: none;">
+                    <span class="brand-line">Past Papers</span>
+                </a>
+            </div>
+            <div class="nav-center">
+                <span class="nav-name">Syed Aun Muhammad</span>
+                <div class="nav-icons">
+                    <a href="https://linkedin.com/in/syed-aun-muhammad-370487223" target="_blank" rel="noopener" class="nav-icon" aria-label="LinkedIn">
+                        <i class="fab fa-linkedin-in"></i>
+                    </a>
+                    <a href="https://github.com/Aunshah110" target="_blank" rel="noopener" class="nav-icon" aria-label="GitHub">
+                        <i class="fab fa-github"></i>
+                    </a>
+                    <a href="/" class="nav-icon" aria-label="Home">
+                        <i class="fas fa-home"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="nav-right">
+                <a href="/feedback" class="nav-feedback">
+                    <i class="fas fa-comment-dots"></i>
+                    <span>Feedback</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="courses-section">
+        <div class="container">
+            <div class="feedback-card">
+                <h1 class="feedback-title">Feedback – UTech Past Papers</h1>
+                <p class="feedback-desc">We’re always improving! Give us Feedback and Share your ideas for new features or functionalities that would make UTech Past Papers more useful for students.</p>
+
+                <form id="feedbackForm">
+                    <!-- Name (Required) -->
+                    <div class="form-group">
+                        <label for="fbName">Name <span class="required-star">*</span></label>
+                        <input type="text" id="fbName" name="name" class="form-control" required placeholder="Your full name">
+                    </div>
+
+                    <!-- Email (Optional) -->
+                    <div class="form-group">
+                        <label for="fbEmail">Email Address (Optional)</label>
+                        <input type="email" id="fbEmail" name="email" class="form-control" placeholder="you@example.com">
+                    </div>
+
+                    <!-- Batch (Required) -->
+                    <div class="form-group">
+                        <label for="fbBatch">Batch <span class="required-star">*</span></label>
+                        <input type="text" id="fbBatch" name="batch" class="form-control" required placeholder="e.g., 23, 24, 25">
+                    </div>
+
+                    <!-- Department (Required) -->
+                    <div class="form-group">
+                        <label for="fbDept">Department <span class="required-star">*</span></label>
+                        <input type="text" id="fbDept" name="department" class="form-control" required placeholder="e.g., AI, CS, Robotics">
+                    </div>
+
+                    <!-- Rating (Required) -->
+                    <div class="form-group">
+                        <label>How would you rate your overall experience on our website? <span class="required-star">*</span></label>
+                        <div class="rating-scale">
+                            <span style="font-size: 0.85rem; color: var(--brown-700);">Least</span>
+                            <div class="rating-options">
+                                <label><input type="radio" name="rating" value="1" required> 1</label>
+                                <label><input type="radio" name="rating" value="2"> 2</label>
+                                <label><input type="radio" name="rating" value="3"> 3</label>
+                                <label><input type="radio" name="rating" value="4"> 4</label>
+                                <label><input type="radio" name="rating" value="5"> 5</label>
+                            </div>
+                            <span style="font-size: 0.85rem; color: var(--brown-700);">Excellent</span>
+                        </div>
+                    </div>
+
+                    <!-- Feature (Optional) -->
+                    <div class="form-group">
+                        <label for="fbFeature">What feature would you like us to add?</label>
+                        <input type="text" id="fbFeature" name="feature" class="form-control">
+                    </div>
+
+                    <!-- Why Useful (Optional) -->
+                    <div class="form-group">
+                        <label for="fbWhy">Why do you think this feature is useful?</label>
+                        <textarea id="fbWhy" name="why" class="form-control" placeholder="Explain briefly..."></textarea>
+                    </div>
+
+                    <!-- Additional Suggestions (Optional) -->
+                    <div class="form-group">
+                        <label for="fbSuggestions">Any additional suggestions?</label>
+                        <textarea id="fbSuggestions" name="suggestions" class="form-control" placeholder="Anything else we should know?"></textarea>
+                    </div>
+
+                    <div class="submit-wrap">
+                        <button type="submit" class="btn-submit" id="submitBtn">Submit Feedback</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- Success Overlay -->
+    <div id="successOverlay" class="success-overlay">
+        <i class="fas fa-check-circle success-icon"></i>
+        <div class="success-text">Your feedback is recorded!</div>
+        <p style="margin-top: 0.5rem; opacity: 0.8;">Redirecting you home…</p>
+    </div>
+
+    <script>
+        document.getElementById('feedbackForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            
+            const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSe9b-wVTuwexriXly52BfnKenv8NGQ0H2C5NlbRSKP3HNjacA/formResponse';
+            
+            const formData = new URLSearchParams();
+            formData.append('entry.1923080674', document.getElementById('fbName').value);
+            formData.append('entry.2058137481', document.getElementById('fbEmail').value);
+            formData.append('entry.1248331136', document.getElementById('fbBatch').value);
+            formData.append('entry.1910794764', document.getElementById('fbDept').value);
+            
+            // Get selected radio rating
+            const rating = document.querySelector('input[name="rating"]:checked');
+            if (rating) {
+                formData.append('entry.650197860', rating.value);
+            }
+            
+            formData.append('entry.1705029638', document.getElementById('fbFeature').value);
+            formData.append('entry.1526047411', document.getElementById('fbWhy').value);
+            formData.append('entry.975754927', document.getElementById('fbSuggestions').value);
+
+            // Use no-cors to bypass CORS issues with Google Forms
+            fetch(GOOGLE_FORM_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: formData
+            })
+            .then(() => {
+                // Show success overlay
+                const overlay = document.getElementById('successOverlay');
+                overlay.classList.add('show');
+
+                // Redirect after 5 seconds
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 5000);
+            })
+            .catch(error => {
+                console.error('Error submitting feedback:', error);
+                // Even on error, we often treat no-cors as "sent" because we can't read the response
+                // But for safety, you could show an error message here.
+                btn.disabled = false;
+                btn.textContent = 'Submit Feedback';
+                alert('There was an issue submitting your feedback. Please try again.');
+            });
+        });
+    </script>
+</body>
+</html>

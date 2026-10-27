@@ -23,9 +23,10 @@
         <div class="nav-inner">
             <div class="nav-brand">
                 <div class="brand-logo">
-                    <img src="{{ url_for('static', filename='images/uni_logo.png') }}" alt="University Logo">
+                   <a href="/"> <img src="{{ url_for('static', filename='images/uni_logo.png') }}" alt="University Logo">
+                   </a>
                 </div>
-                <span class="brand-line">Past Papers</span>
+                <a href="/" style="text-decoration: none;"><span class="brand-line">Past Papers</span></a>
             </div>
             <div class="nav-center">
                 <span class="nav-name">Syed Aun Muhammad</span>
@@ -154,6 +155,48 @@
     <div id="chatOverlay" class="chat-overlay" aria-hidden="true"></div>
 
     <!-- ============================================================
+     PDF PREVIEW MODAL
+     ============================================================ -->
+    <div id="previewModal" class="preview-modal" aria-hidden="true" role="dialog" aria-modal="true">
+        <div class="preview-backdrop" id="previewBackdrop"></div>
+
+        <div class="preview-shell">
+            <div class="preview-header">
+                <div class="preview-title-wrap">
+                    <i class="fas fa-file-pdf"></i>
+                    <span id="previewTitle">Loading…</span>
+                </div>
+                <div class="preview-actions">
+                    <a id="previewDownloadBtn"
+                       class="preview-action-btn"
+                       href="#"
+                       title="Download this paper">
+                        <i class="fas fa-download"></i>
+                        <span>Download</span>
+                    </a>
+                    <button id="previewCloseBtn"
+                            class="preview-action-btn preview-close"
+                            type="button"
+                            title="Close preview">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="preview-body">
+                <div id="previewLoading" class="preview-loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Loading preview…</span>
+                </div>
+                <iframe id="previewFrame"
+                        class="preview-frame"
+                        title="PDF Preview"
+                        referrerpolicy="no-referrer"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          SINGLE SCRIPT BLOCK — course page + chatbot share scope
          ============================================================ -->
     <script>
@@ -191,6 +234,15 @@
             const d = document.createElement('div');
             d.textContent = value == null ? '' : String(value);
             return d.innerHTML;
+        }
+
+        function escapeAttr(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
         }
 
         // ---- Load course header ----
@@ -265,9 +317,16 @@
                                         '</span>' +
                                     '</div>' +
                                 '</div>' +
-                                '<a class="paper-download" href="/download/' + p.id + '">' +
-                                    '<i class="fas fa-download"></i> Download' +
-                                '</a>' +
+                                '<div class="paper-actions">' +
+                                    '<button type="button" class="paper-preview" ' +
+                                        'data-id="' + p.id + '" ' +
+                                        'data-name="' + escapeAttr(displayName) + '">' +
+                                        '<i class="fas fa-eye"></i> Preview' +
+                                    '</button>' +
+                                    '<a class="paper-download" href="/download/' + p.id + '">' +
+                                        '<i class="fas fa-download"></i> Download' +
+                                    '</a>' +
+                                '</div>' +
                             '</div>'
                         );
                     }).join('');
@@ -480,7 +539,7 @@
                         botBubble.innerHTML = renderedHtml;
                     } else {
                         botBubble.textContent = result.data.prediction;
-}
+                    }
                 } else {
                     botBubble.textContent = '⚠ ' +
                         (result.data.error || 'Analysis failed. Please try again.');
@@ -525,6 +584,101 @@
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             });
         }
+
+        // ============================================================
+        // PDF PREVIEW
+        // ============================================================
+        (function initPreview() {
+            const modal       = document.getElementById('previewModal');
+            const backdrop    = document.getElementById('previewBackdrop');
+            const shell       = modal ? modal.querySelector('.preview-shell') : null;
+            const frame       = document.getElementById('previewFrame');
+            const loading     = document.getElementById('previewLoading');
+            const titleEl     = document.getElementById('previewTitle');
+            const closeBtn    = document.getElementById('previewCloseBtn');
+            const downloadBtn = document.getElementById('previewDownloadBtn');
+        
+            if (!modal || !frame) return;
+        
+            let lastFocused = null;
+        
+            function openPreview(paperId, paperName) {
+                lastFocused = document.activeElement;
+            
+                titleEl.textContent = paperName || 'Paper preview';
+                downloadBtn.href = '/download/' + paperId;
+            
+                // Reset previous state
+                frame.classList.remove('loaded');
+                loading.classList.remove('hidden');
+            
+                // Use the new /preview/<id> route — it serves inline, not as attachment
+                frame.src = '/preview/' + paperId;
+                
+                modal.classList.add('open');
+                modal.setAttribute('aria-hidden', 'false');
+                
+                // Lock page scroll while modal is open
+                document.body.style.overflow = 'hidden';
+            }
+        
+            function closePreview() {
+                modal.classList.remove('open');
+                modal.setAttribute('aria-hidden', 'true');
+            
+                // Give the fade-out animation time, then unload to free memory
+                setTimeout(() => {
+                    frame.src = 'about:blank';
+                }, 250);
+            
+                document.body.style.overflow = '';
+            
+                if (lastFocused && typeof lastFocused.focus === 'function') {
+                    lastFocused.focus();
+                }
+            }
+        
+            // When the PDF finishes loading, hide the spinner + fade in
+            frame.addEventListener('load', () => {
+                // Ignore the about:blank unload
+                if (!frame.src || frame.src === 'about:blank') return;
+                loading.classList.add('hidden');
+                frame.classList.add('loaded');
+            });
+        
+            // Handle PDF load errors gracefully (some browsers don't fire onerror for PDFs,
+            // so we also add a timeout safety net)
+            let safety = null;
+            function armSafety() {
+                clearTimeout(safety);
+                safety = setTimeout(() => {
+                    if (!frame.classList.contains('loaded')) {
+                        loading.innerHTML =
+                            '<i class="fas fa-exclamation-triangle"></i>' +
+                            '<span>Could not load preview. Try downloading instead.</span>';
+                    }
+                }, 15000);
+            }
+        
+            // Delegate clicks on .paper-preview
+            elPapers.addEventListener('click', (e) => {
+                const btn = e.target.closest('.paper-preview');
+                if (!btn) return;
+                e.preventDefault();
+                openPreview(btn.dataset.id, btn.dataset.name);
+                armSafety();
+            });
+        
+            // Close handlers
+            closeBtn.addEventListener('click', closePreview);
+            backdrop.addEventListener('click', closePreview);
+        
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && modal.classList.contains('open')) {
+                    closePreview();
+                }
+            });
+        })();
 
     })();
     </script>

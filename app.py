@@ -557,6 +557,10 @@ def index():
 def admin():
     return render_template('admin.html')
 
+@app.route('/feedback')
+def feedback():
+    return render_template('feedback.html')
+
 @app.route('/course/<int:course_id>')
 def course_detail(course_id):
     return render_template('course.html', course_id=course_id)
@@ -1154,6 +1158,68 @@ def get_course_papers(course_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/preview/<int:paper_id>')
+def preview_paper(paper_id):
+    """
+    Stream the PDF inline so it renders in the browser (iframe preview).
+    Mirrors /download/<id> but uses Content-Disposition: inline.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT pdf_url, pdf_filename, course_code, exam_type, year
+            FROM courses WHERE id = %s
+        """, (paper_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return jsonify({'error': 'Paper not found'}), 404
+
+        blob_url = row['pdf_url']
+
+        display_name = row['pdf_filename']
+        if not display_name:
+            display_name = f"{row['course_code']}_{row['exam_type']}_{row['year']}.pdf"
+        if not display_name.lower().endswith('.pdf'):
+            display_name += '.pdf'
+
+        upstream = requests.get(blob_url, stream=True, timeout=30)
+        if upstream.status_code != 200:
+            return jsonify({'error': 'Failed to fetch PDF from storage'}), 502
+
+        safe_name = display_name.replace('"', '').replace('\n', '').replace('\r', '')
+
+        headers = {
+            'Content-Type': 'application/pdf',
+            # inline = render in the browser, NOT download
+            'Content-Disposition': f'inline; filename="{safe_name}"',
+            # Let the browser cache it briefly so repeat previews are instant
+            'Cache-Control': 'private, max-age=600',
+            # Allow the parent page to embed it in an iframe (same-origin)
+            'X-Frame-Options': 'SAMEORIGIN',
+        }
+
+        return Response(
+            stream_with_context(upstream.iter_content(chunk_size=8192)),
+            headers=headers,
+            status=200,
+        )
+
+    except Exception as e:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'error': str(e)}), 500
 
 # ============================================================
 # AI CHATBOT — SHARED HELPERS
