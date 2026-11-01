@@ -2146,3 +2146,31 @@ img { max-width: 100%; display: block; }
     }
 }
 
+/* ============================================================
+   QURANIC VERSE (Hero Section)
+   ============================================================ */
+.quranic-verse {
+    font-family: 'Traditional Arabic', 'Amiri', 'Scheherazade New', 'Segoe UI', Tahoma, sans-serif;
+    font-size: clamp(1.4rem, 3vw, 2rem); /* Moderate, responsive size */
+    font-weight: 700;
+    color: var(--brown-800);             /* Strong text color matching your theme */
+    margin-bottom: 1rem;                 /* Space between verse and title */
+    line-height: 1.6;
+    opacity: 0.9;
+    text-align: center;
+    text-shadow: 0 1px 4px rgba(255, 255, 255, 0.6); /* Soft glow for readability */
+    animation: fadeInVerse 1s ease forwards;
+}
+
+@keyframes fadeInVerse {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 0.9; transform: translateY(0); }
+}
+
+/* Mobile adjustments for the verse */
+@media (max-width: 640px) {
+    .quranic-verse {
+        font-size: 1.25rem;
+        margin-bottom: 0.75rem;
+    }
+}
